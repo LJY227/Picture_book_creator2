@@ -15,7 +15,7 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
  * @param {Object} options - 调用选项
  * @returns {Promise<Object>} API响应
  */
-async function callOpenAIChat(options) {
+async function callOpenAIChat(options, retryCount = 0, maxRetries = 3) {
   try {
     const response = await fetch(`${API_BASE_URL}/openai/chat`, {
       method: 'POST',
@@ -26,13 +26,40 @@ async function callOpenAIChat(options) {
     });
 
     if (!response.ok) {
-      const error = await response.json();
+      const error = await response.json().catch(() => ({ error: `HTTP ${response.status}: ${response.statusText}` }));
+      
+      // 处理429错误（频率限制）
+      if (response.status === 429) {
+        console.warn(`OpenAI API频率限制，第${retryCount + 1}次重试...`);
+        
+        if (retryCount < maxRetries) {
+          // 指数退避：等待时间逐渐增加
+          const waitTime = Math.min(1000 * Math.pow(2, retryCount), 30000); // 最多等待30秒
+          console.log(`等待${waitTime/1000}秒后重试...`);
+          
+          await new Promise(resolve => setTimeout(resolve, waitTime));
+          return callOpenAIChat(options, retryCount + 1, maxRetries);
+        } else {
+          throw new Error(`API频率限制：请求过于频繁，请稍后再试。已重试${maxRetries}次仍失败。`);
+        }
+      }
+      
+      // 处理其他错误
       throw new Error(error.error || `HTTP ${response.status}: ${response.statusText}`);
     }
 
     return await response.json();
   } catch (error) {
     console.error('OpenAI Chat API代理调用失败:', error);
+    
+    // 如果是网络错误且还有重试次数，则重试
+    if (retryCount < maxRetries && (error.name === 'TypeError' || error.message.includes('fetch'))) {
+      console.warn(`网络错误，第${retryCount + 1}次重试...`);
+      const waitTime = 2000 * (retryCount + 1); // 递增等待时间
+      await new Promise(resolve => setTimeout(resolve, waitTime));
+      return callOpenAIChat(options, retryCount + 1, maxRetries);
+    }
+    
     throw error;
   }
 }

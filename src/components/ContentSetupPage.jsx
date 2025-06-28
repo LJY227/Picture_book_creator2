@@ -92,8 +92,22 @@ export default function ContentSetupPage() {
           setGenerationProgress(15)
         } catch (error) {
           console.error('自定义内容分析失败:', error);
+          
+          // 检查是否是429错误
+          if (error.message.includes('频率限制') || error.message.includes('429')) {
+            setGenerationStatus('API调用频率过高，请稍后再试...')
+            // 等待几秒后重置
+            setTimeout(() => {
+              setIsGenerating(false)
+              setGenerationStatus('')
+              setGenerationProgress(0)
+            }, 5000)
+            return
+          }
+          
           // 如果分析失败，直接使用用户输入的内容
           educationalTopic = contentData.customContent;
+          setGenerationStatus('内容分析跳过，继续生成故事...')
         }
       } else if (contentData.selectedTopic) {
         // 模式2：用户选择了主题示例
@@ -159,13 +173,30 @@ export default function ContentSetupPage() {
 
     } catch (error) {
       console.error('生成绘本失败:', error)
-      setGenerationStatus('生成失败，请检查网络连接或API配置')
+      
+      // 根据错误类型提供不同的用户提示
+      let errorMessage = '生成失败，请检查网络连接或API配置';
+      
+      if (error.message.includes('频率限制') || error.message.includes('429')) {
+        errorMessage = 'API调用频率过高，请等待1-2分钟后再试';
+      } else if (error.message.includes('网络') || error.message.includes('fetch')) {
+        errorMessage = '网络连接异常，请检查网络后重试';
+      } else if (error.message.includes('unauthorized') || error.message.includes('401')) {
+        errorMessage = 'API密钥无效，请检查配置';
+      } else if (error.message.includes('quota') || error.message.includes('billing')) {
+        errorMessage = 'API配额已用完，请检查账户余额';
+      }
+      
+      setGenerationStatus(errorMessage)
 
-      // 3秒后重置状态
+      // 根据错误类型设置不同的等待时间
+      const waitTime = error.message.includes('频率限制') ? 8000 : 5000;
+      
       setTimeout(() => {
         setIsGenerating(false)
         setGenerationStatus('')
-      }, 3000)
+        setGenerationProgress(0)
+      }, waitTime)
     }
   }
 
@@ -225,11 +256,44 @@ export default function ContentSetupPage() {
             </div>
           </div>
 
-          {generationStatus.includes('失败') && (
+          {(generationStatus.includes('失败') || generationStatus.includes('频率过高') || generationStatus.includes('异常')) && (
             <div className="mt-6 p-4 bg-red-50 border border-red-200 rounded-lg">
-              <div className="text-red-600 text-sm font-medium mb-2">生成失败</div>
-              <div className="text-red-500 text-xs">
-                请检查您的OpenAI API密钥配置和网络连接
+              <div className="text-red-600 text-sm font-medium mb-2">
+                {generationStatus.includes('频率过高') ? 'API调用限制' : 
+                 generationStatus.includes('异常') ? '网络连接问题' : '生成失败'}
+              </div>
+              <div className="text-red-500 text-xs space-y-1">
+                {generationStatus.includes('频率过高') ? (
+                  <>
+                    <div>• OpenAI API调用频率超出限制</div>
+                    <div>• 请等待1-2分钟后重新尝试</div>
+                    <div>• 系统会自动重试，请耐心等待</div>
+                  </>
+                ) : generationStatus.includes('异常') ? (
+                  <>
+                    <div>• 网络连接不稳定或服务器暂时不可用</div>
+                    <div>• 请检查您的网络连接</div>
+                    <div>• 稍后重试或刷新页面</div>
+                  </>
+                ) : generationStatus.includes('密钥无效') ? (
+                  <>
+                    <div>• OpenAI API密钥无效或已过期</div>
+                    <div>• 请检查后台API密钥配置</div>
+                    <div>• 确保API密钥有效且有足够权限</div>
+                  </>
+                ) : generationStatus.includes('配额') ? (
+                  <>
+                    <div>• OpenAI API配额已用完</div>
+                    <div>• 请检查您的OpenAI账户余额</div>
+                    <div>• 充值后即可继续使用</div>
+                  </>
+                ) : (
+                  <>
+                    <div>• 请检查您的OpenAI API密钥配置和网络连接</div>
+                    <div>• 确保服务器正常运行</div>
+                    <div>• 如问题持续，请联系技术支持</div>
+                  </>
+                )}
               </div>
             </div>
           )}
