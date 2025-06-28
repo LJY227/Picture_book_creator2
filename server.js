@@ -9,7 +9,7 @@ import { fileURLToPath } from 'url';
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 8080;  // Zeabur/云端系统标准入口端口
+const PORT = process.env.PORT || 8080; // 关键：监听 8080
 
 app.use(cors({
   origin: [
@@ -50,7 +50,7 @@ function generateSignature(uri) {
   return { signature, timestamp: timestamp.toString(), signatureNonce };
 }
 
-// === 你的所有 API 路由如下，全部照常保留 ===
+// 所有你的 API 路由 ↓↓↓
 
 app.get('/', (req, res) => {
   res.json({
@@ -98,32 +98,194 @@ app.get('/api/liblib/config', (req, res) => {
   });
 });
 
-// ...剩下所有 /api 路由都保留...
-
 app.post('/api/liblib/text2img', async (req, res) => {
-  // ...原有逻辑...
+  try {
+    const { prompt, options = {} } = req.body;
+    if (!prompt) return res.status(400).json({ error: '缺少prompt参数' });
+    if (!LIBLIB_CONFIG.accessKey || !LIBLIB_CONFIG.secretKey)
+      return res.status(500).json({ error: 'LiblibAI API配置不完整' });
+    const uri = LIBLIB_CONFIG.text2imgEndpoint;
+    const { signature, timestamp, signatureNonce } = generateSignature(uri);
+    const url = `${LIBLIB_CONFIG.baseUrl}${uri}?AccessKey=${LIBLIB_CONFIG.accessKey}&Signature=${signature}&Timestamp=${timestamp}&SignatureNonce=${signatureNonce}`;
+    const requestData = {
+      templateUuid: LIBLIB_CONFIG.text2imgTemplateUuid,
+      generateParams: {
+        model: "pro",
+        prompt: prompt.substring(0, 2000),
+        aspectRatio: options.aspectRatio || "3:4",
+        guidance_scale: options.guidance_scale || 3.5,
+        imgCount: options.imgCount || 1
+      }
+    };
+    const fetch = (await import('node-fetch')).default;
+    const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(requestData) });
+    const responseText = await response.text();
+    let result;
+    try { result = JSON.parse(responseText);} catch (parseError) {
+      return res.status(500).json({
+        error: 'API响应格式错误',
+        details: responseText.substring(0, 500),
+        status: response.status
+      });
+    }
+    if (!response.ok) return res.status(response.status).json(result);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
-app.post('/api/liblib/img2img', async (req, res) => { /* ... */ });
-app.post('/api/liblib/query/:generateUuid', async (req, res) => { /* ... */ });
-app.post('/api/openai/chat', async (req, res) => { /* ... */ });
-app.post('/api/openai/images', async (req, res) => { /* ... */ });
-app.get('/api/status', (req, res) => { /* ... */ });
 
-// ================================
-// 新增静态资源托管和 SPA fallback，支持所有HTTP请求方法
+app.post('/api/liblib/img2img', async (req, res) => {
+  try {
+    const { prompt, imageUrl, options = {} } = req.body;
+    if (!prompt || !imageUrl)
+      return res.status(400).json({ error: '缺少prompt或imageUrl参数' });
+    if (!LIBLIB_CONFIG.accessKey || !LIBLIB_CONFIG.secretKey)
+      return res.status(500).json({ error: 'LiblibAI API配置不完整' });
+    const uri = LIBLIB_CONFIG.img2imgEndpoint;
+    const { signature, timestamp, signatureNonce } = generateSignature(uri);
+    const url = `${LIBLIB_CONFIG.baseUrl}${uri}?AccessKey=${LIBLIB_CONFIG.accessKey}&Signature=${signature}&Timestamp=${timestamp}&SignatureNonce=${signatureNonce}`;
+    const requestData = {
+      templateUuid: LIBLIB_CONFIG.img2imgTemplateUuid,
+      generateParams: {
+        model: options.model || "pro",
+        prompt: prompt.substring(0, 2000),
+        aspectRatio: options.aspectRatio || "1:1",
+        guidance_scale: options.guidance_scale || 3.5,
+        imgCount: options.imgCount || 1,
+        image_list: [imageUrl]
+      }
+    };
+    const fetch = (await import('node-fetch')).default;
+    const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(requestData) });
+    const responseText = await response.text();
+    let result;
+    try { result = JSON.parse(responseText);} catch (parseError) {
+      return res.status(500).json({ error: 'API响应格式错误', details: responseText.substring(0, 500), status: response.status });
+    }
+    if (!response.ok) return res.status(response.status).json(result);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/liblib/query/:generateUuid', async (req, res) => {
+  try {
+    const { generateUuid } = req.params;
+    if (!generateUuid) return res.status(400).json({ error: '缺少generateUuid参数' });
+    if (!LIBLIB_CONFIG.accessKey || !LIBLIB_CONFIG.secretKey)
+      return res.status(500).json({ error: 'LiblibAI API配置不完整' });
+    const uri = LIBLIB_CONFIG.statusEndpoint;
+    const { signature, timestamp, signatureNonce } = generateSignature(uri);
+    const url = `${LIBLIB_CONFIG.baseUrl}${uri}?AccessKey=${LIBLIB_CONFIG.accessKey}&Signature=${signature}&Timestamp=${timestamp}&SignatureNonce=${signatureNonce}`;
+    const requestData = { generateUuid: generateUuid };
+    const fetch = (await import('node-fetch')).default;
+    const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(requestData) });
+    const responseText = await response.text();
+    let result;
+    try { result = JSON.parse(responseText);} catch (parseError) {
+      return res.status(500).json({ error: '查询响应格式错误', details: responseText.substring(0, 500) });
+    }
+    if (!response.ok) return res.status(response.status).json(result);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// OpenAI聊天API代理
+app.post('/api/openai/chat', async (req, res) => {
+  try {
+    const { messages, model = 'gpt-4o', temperature = 0.7, max_tokens = 150 } = req.body;
+    if (!messages) return res.status(400).json({ error: '缺少messages参数' });
+    if (!process.env.VITE_OPENAI_API_KEY)
+      return res.status(500).json({ error: 'OpenAI API密钥未配置' });
+    const fetch = (await import('node-fetch')).default;
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.VITE_OPENAI_API_KEY}`
+      },
+      body: JSON.stringify({ model, messages, temperature, max_tokens })
+    });
+    const result = await response.json();
+    if (!response.ok) return res.status(response.status).json(result);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// DALL-E 3 图像生成API代理
+app.post('/api/openai/images', async (req, res) => {
+  try {
+    const { prompt, size = '1024x1024', quality = 'standard', n = 1 } = req.body;
+    if (!prompt) return res.status(400).json({ error: '缺少prompt参数' });
+    if (!process.env.VITE_OPENAI_API_KEY)
+      return res.status(500).json({ error: 'OpenAI API密钥未配置' });
+    const fetch = (await import('node-fetch')).default;
+    const response = await fetch('https://api.openai.com/v1/images/generations', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.VITE_OPENAI_API_KEY}`
+      },
+      body: JSON.stringify({
+        model: 'dall-e-3',
+        prompt: prompt.substring(0, 4000),
+        size,
+        quality,
+        n
+      })
+    });
+    const result = await response.json();
+    if (!response.ok) return res.status(response.status).json(result);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// API状态检查
+app.get('/api/status', (req, res) => {
+  const hasOpenAIKey = !!process.env.VITE_OPENAI_API_KEY;
+  const hasLiblibConfig = !!(LIBLIB_CONFIG.accessKey && LIBLIB_CONFIG.secretKey);
+  res.json({
+    status: 'running',
+    timestamp: new Date().toISOString(),
+    services: {
+      openai: {
+        configured: hasOpenAIKey,
+        message: hasOpenAIKey ? 'OpenAI API已配置' : 'OpenAI API密钥未配置'
+      },
+      liblib: {
+        configured: hasLiblibConfig,
+        message: hasLiblibConfig ? 'LiblibAI API已配置' : 'LiblibAI API密钥未配置'
+      }
+    },
+    endpoints: [
+      'POST /api/openai/chat - OpenAI聊天API',
+      'POST /api/openai/images - DALL-E图像生成',
+      'POST /api/liblib/text2img - LiblibAI文生图',
+      'POST /api/liblib/img2img - LiblibAI图生图',
+      'GET /api/status - 服务状态检查'
+    ]
+  });
+});
+
+// ========== 新版静态资源托管和 SPA fallback ==========
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const clientBuildPath = path.join(__dirname, "dist");
 app.use(express.static(clientBuildPath));
-
-app.all('*', (req, res) => {
+app.all("*", (req, res) => {
   if (req.path.startsWith("/api/")) {
     res.status(404).json({ error: "API not found" });
   } else {
     res.sendFile(path.join(clientBuildPath, "index.html"));
   }
 });
-
-// ================================
 
 app.listen(PORT, () => {
   console.log(`🚀 图画书创作器API服务器运行在 http://localhost:${PORT}`);
