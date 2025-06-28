@@ -7,8 +7,8 @@ import {
   getEnhancedCharacterDefinition
 } from './characterConsistency.js';
 
-// 获取后端API地址
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3005';
+// 获取后端API地址 - 使用相对路径
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 
 /**
  * 通过后端代理调用OpenAI Chat API
@@ -17,7 +17,7 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3005
  */
 async function callOpenAIChat(options) {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/openai/chat`, {
+    const response = await fetch(`${API_BASE_URL}/openai/chat`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -44,7 +44,7 @@ async function callOpenAIChat(options) {
  */
 async function callOpenAIImages(options) {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/openai/images`, {
+    const response = await fetch(`${API_BASE_URL}/openai/images`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

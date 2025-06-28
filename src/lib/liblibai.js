@@ -5,13 +5,13 @@
  * API文档: https://openapi.liblibai.cloud
  */
 
-// LiblibAI API配置 - 使用本地代理服务器
+// LiblibAI API配置 - 使用相对路径
 const LIBLIB_CONFIG = {
-  baseUrl: 'http://localhost:3005', // 更新为3005端口
-  text2imgEndpoint: '/api/liblib/text2img',
-  img2imgEndpoint: '/api/liblib/img2img',
-  queryEndpoint: '/api/liblib/query',
-  configEndpoint: '/api/liblib/config'
+  baseUrl: import.meta.env.VITE_API_BASE_URL || '/api', // 使用相对路径
+  text2imgEndpoint: '/liblib/text2img',
+  img2imgEndpoint: '/liblib/img2img',
+  queryEndpoint: '/liblib/query',
+  configEndpoint: '/liblib/config'
 };
 
 /**

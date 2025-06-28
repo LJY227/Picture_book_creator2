@@ -12,7 +12,14 @@ export default defineConfig({
   },
   server: {
     port: 3000,
-    open: true
+    open: true,
+    proxy: {
+      '/api': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+        secure: false
+      }
+    }
   },
   build: {
     outDir: 'dist',
@@ -22,7 +29,7 @@ export default defineConfig({
   define: {
     // 确保环境变量在构建时被正确替换
     'import.meta.env.VITE_API_BASE_URL': JSON.stringify(
-      process.env.VITE_API_BASE_URL || 'http://localhost:3005'
+      process.env.VITE_API_BASE_URL || '/api'
     )
   }
 })
