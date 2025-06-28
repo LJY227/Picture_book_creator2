@@ -52,7 +52,8 @@ function generateSignature(uri) {
 
 // 所有你的 API 路由 ↓↓↓
 
-app.get('/', (req, res) => {
+// API根路径信息
+app.get('/api', (req, res) => {
   res.json({
     message: 'LiblibAI代理服务器运行正常',
     version: '1.0.0',
@@ -275,15 +276,29 @@ app.get('/api/status', (req, res) => {
   });
 });
 
-// ========== 新版静态资源托管和 SPA fallback ==========
+// ========== 静态资源托管和 SPA fallback ==========
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const clientBuildPath = path.join(__dirname, "dist");
-app.use(express.static(clientBuildPath));
-app.all("*", (req, res) => {
+
+// 静态文件服务 - 处理所有静态资源 (CSS, JS, 图片等)
+app.use(express.static(clientBuildPath, {
+  index: false, // 不自动提供index.html，让我们手动控制
+  maxAge: '1d'  // 缓存静态资源1天
+}));
+
+// SPA fallback - 所有非API路由都返回index.html
+app.get("*", (req, res) => {
+  // 如果是API路由但没有找到对应的处理器，返回404
   if (req.path.startsWith("/api/")) {
-    res.status(404).json({ error: "API not found" });
+    res.status(404).json({ error: "API endpoint not found" });
   } else {
-    res.sendFile(path.join(clientBuildPath, "index.html"));
+    // 所有其他路由都返回前端应用的index.html
+    res.sendFile(path.join(clientBuildPath, "index.html"), (err) => {
+      if (err) {
+        console.error('Error serving index.html:', err);
+        res.status(500).json({ error: "Failed to serve frontend application" });
+      }
+    });
   }
 });
 
