@@ -65,6 +65,117 @@ async function callOpenAIImages(options) {
 }
 
 /**
+ * 使用GPT-4o分析用户自定义教学内容
+ * @param {string} customContent - 用户输入的自定义教学内容
+ * @returns {Promise<Object>} 分析结果
+ */
+export async function analyzeCustomContent(customContent) {
+  try {
+    console.log('🔍 开始分析用户自定义教学内容:', customContent);
+
+    const systemPrompt = `你是一位专业的儿童教育专家和绘本故事策划师，特别专注于自闭症儿童的教育需求。
+
+**核心任务**：
+- 深入分析用户提供的教学内容描述
+- 提炼出核心教育目标和学习要点
+- 将抽象的教育理念转化为具体的故事主题
+- 确保内容适合3-7岁自闭症儿童的认知特点
+
+**分析重点**：
+1. **教育价值观**：识别用户想要传达的核心价值观（如分享、勇敢、友谊等）
+2. **具体行为**：提取可以在故事中展示的具体行为和场景
+3. **学习目标**：明确孩子通过阅读能够学到什么
+4. **情境应用**：考虑在什么情境下应用这些教学内容
+
+**适应性要求**：
+- 内容必须简单直接，避免抽象概念
+- 情节要有重复性和可预测性
+- 包含明确的情绪表达和社交技能元素
+- 提供积极的行为示范
+
+请将分析结果整理成简洁的教学主题描述。`;
+
+    const userPrompt = `请分析以下用户提供的教学内容描述，并提炼出适合绘本故事的核心教学主题：
+
+**用户描述：**
+"${customContent}"
+
+**分析要求：**
+1. 识别核心教育目标
+2. 提取关键行为要素
+3. 考虑自闭症儿童的认知特点
+4. 转化为具体的故事主题
+
+**返回格式（JSON）：**
+{
+  "analyzedTopic": "提炼后的核心教学主题（简洁明了，适合故事创作）",
+  "keyLearningPoints": ["学习要点1", "学习要点2", "学习要点3"],
+  "suggestedBehaviors": ["具体行为示范1", "具体行为示范2"],
+  "educationalValue": "这个主题的教育价值说明",
+  "adaptationNotes": "针对自闭症儿童的特殊适应建议"
+}
+
+请确保analyzedTopic简洁有力，能够很好地指导故事创作。`;
+
+    const response = await callOpenAIChat({
+      model: "gpt-4o",
+      messages: [
+        {
+          role: "system",
+          content: systemPrompt
+        },
+        {
+          role: "user",
+          content: userPrompt
+        }
+      ],
+      temperature: 0.7,
+      max_tokens: 800
+    });
+
+    const analysisContent = response.choices[0].message.content.trim();
+    console.log('📊 GPT-4o分析原始结果:', analysisContent);
+
+    // 解析JSON结果
+    let analysisResult;
+    try {
+      analysisResult = JSON.parse(analysisContent);
+    } catch (parseError) {
+      console.error('JSON解析失败:', parseError);
+      // 如果解析失败，尝试提取JSON部分
+      const jsonMatch = analysisContent.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        analysisResult = JSON.parse(jsonMatch[0]);
+      } else {
+        // 如果完全解析失败，返回基本结果
+        analysisResult = {
+          analyzedTopic: customContent.length > 50 ? customContent.substring(0, 50) + '...' : customContent,
+          keyLearningPoints: ['培养良好品格', '学习社交技能', '建立积极态度'],
+          suggestedBehaviors: ['友好互动', '遵守规则', '表达情感'],
+          educationalValue: '帮助孩子建立正确的价值观和行为习惯',
+          adaptationNotes: '使用简单直接的语言和重复的行为模式'
+        };
+      }
+    }
+
+    console.log('✅ 自定义内容分析完成:', analysisResult);
+    return analysisResult;
+
+  } catch (error) {
+    console.error('❌ 自定义内容分析失败:', error);
+    
+    // 返回基本的分析结果作为回退
+    return {
+      analyzedTopic: customContent.length > 50 ? customContent.substring(0, 50) + '...' : customContent,
+      keyLearningPoints: ['基础教育内容'],
+      suggestedBehaviors: ['积极行为示范'],
+      educationalValue: '基础教育价值',
+      adaptationNotes: '适合自闭症儿童阅读'
+    };
+  }
+}
+
+/**
  * 使用GPT-4o优化角色描述为图像生成关键词
  * @param {string} userDescription - 用户输入的角色描述
  * @param {Object} basicInfo - 基础角色信息（年龄、性别、身份）
@@ -261,6 +372,8 @@ export async function generatePictureBook({ character, story, content, onProgres
 
     console.log('发送到OpenAI的提示词:', prompt);
     console.log('使用的图像生成引擎:', imageEngine);
+    console.log('教学内容模式:', content.mode || 'unknown');
+    console.log('最终教学主题:', content.educationalTopic || content.finalTopic);
     onProgress && onProgress('正在构建故事提示词...', 10);
     
     const response = await callOpenAIChat({
@@ -268,7 +381,28 @@ export async function generatePictureBook({ character, story, content, onProgres
       messages: [
         {
           role: "system",
-          content: "你是一个专为自闭症儿童创作绘本的专家。请根据以下要求生成一个适合3-7岁自闭症儿童阅读的绘本故事：\n\n- 使用简洁明了的句子，每页不超过2-3句；\n- 故事结构简单清晰，有明确的开始、发展和结尾；\n- 包含积极的情绪引导，如情绪表达、规则学习或社交技能；\n- 加入重复的句型与角色行为，便于理解和记忆；\n- 避免使用比喻、讽刺、复杂隐喻等表达；\n- 每页为插画师提供一段简短的英文插图描述；\n\n请严格按照用户要求的格式返回JSON数据。"
+          content: `你是一位顶级的自闭症儿童教育专家和专业绘本创作师。你的任务是创作既生动有趣又适合自闭症儿童的高质量教学绘本。
+
+**核心创作理念**：
+- 语言简单但故事生动：用最简单的词汇讲述最有趣的故事
+- 深度教育意义：每个故事都要有明确的教学价值，适合课堂使用
+- 完美图文对应：插画描述必须精确反映故事内容，确保图文一致
+- 绝对角色一致性：主角外貌特征在整个故事中不得有任何变化
+
+**特殊教育专业要求**：
+1. 语言特点：简单直白但富有感染力，避免抽象概念
+2. 情节设计：生动有趣且贴近生活，有适度戏剧张力但结局积极
+3. 教育价值：深刻的品德教育和技能培养，适合老师教学讨论
+4. 角色塑造：鲜明的人物形象，行为示范明确具体
+5. 场景描述：详细准确的英文插画描述，确保视觉呈现完美
+
+**质量标准**：
+- 故事要让孩子想反复阅读，但理解无障碍
+- 教育内容要深入浅出，老师容易展开教学
+- 每页插画描述要让插画师能创作出与故事完美匹配的图像
+- 角色外貌描述要精确一致，确保整本书的视觉连贯性
+
+请严格按照用户的详细要求创作，确保生成高质量的专业教学绘本内容。`
         },
         {
           role: "user",
@@ -321,14 +455,16 @@ export async function generatePictureBook({ character, story, content, onProgres
       imageEngine: imageEngine, // 记录使用的图像引擎
       characterConsistency: useCharacterConsistency, // 记录是否使用角色一致性
       characterDefinition: imageResult.characterDefinition || null,
-      masterImageUrl: imageResult.masterImageUrl || null // 添加主角形象图URL
+      masterImageUrl: imageResult.masterImageUrl || null, // 添加主角形象图URL
+      contentMode: content.mode, // 记录内容生成模式
+      finalEducationalTopic: content.educationalTopic || content.finalTopic // 记录最终教学主题
     };
     
   } catch (error) {
     console.error('生成绘本失败:', error);
     
     // 如果API调用失败，返回默认内容
-    return generateFallbackContent({ character, story });
+    return generateFallbackContent({ character, story, content });
   }
 }
 
@@ -343,66 +479,110 @@ function buildPrompt({ character, story, content }) {
     'life-skills': '生活技能'
   };
 
-  const educationalTopic = content.isCustom 
-    ? content.customContent 
-    : content.randomTopic || '学会分享与合作';
+  // 优先使用传递的educationalTopic，然后是finalTopic，最后是默认值
+  const educationalTopic = content.educationalTopic || content.finalTopic || '学会分享与合作';
 
   // 标准化角色描述
   const characterDescription = generateCharacterDescription(character);
   const characterName = character.name || '主角';
 
-  return `请为自闭症儿童创作一个绘本故事，要求如下：
+  // 根据内容模式生成不同的提示词
+  let contentModeNote = '';
+  if (content.mode === 'custom') {
+    contentModeNote = '\n\n**特别注意**：本故事基于用户的自定义教学内容需求创作，请确保紧密围绕指定的教学主题展开，深入体现其教育价值。';
+  } else if (content.mode === 'selected') {
+    contentModeNote = '\n\n**特别注意**：本故事基于用户选择的特定主题创作，请确保故事内容充分展现该主题的核心要素和教育意义。';
+  } else {
+    contentModeNote = '\n\n**特别注意**：本故事采用智能随机生成模式，请确保内容丰富有趣，充满教育价值。';
+  }
 
-角色设定：
+  return `请为自闭症儿童创作一个既生动有趣又具有深度教育意义的绘本故事。这个故事将被用于特殊教育教学，需要平衡趣味性和教育性。
+
+【角色设定】
 - 主角：${characterName}
-- 外貌：${characterDescription}
+- 外貌特征：${characterDescription}
 - 年龄：${character.age}岁
+- ⚠️ 角色一致性要求：在所有页面中，${characterName}的外貌、服装、特征必须完全一致，不得有任何变化
 
-故事设定：
+【故事框架】
 - 故事类型：${storyTypes[story.type] || '成长故事'}
 - 故事页数：${story.pages}页
-- 教育主题：${educationalTopic}
+- 核心教育主题：${educationalTopic}
+- 内容生成模式：${content.mode || 'random'} 模式${contentModeNote}
 
-特殊要求（针对自闭症儿童）：
-1. 每页文字不超过2-3句话，每句话不超过15个字
-2. 使用简单、直接的表达，避免比喻和隐喻
-3. 重复使用相同的句型结构，如"${characterName}看到了..."、"${characterName}感到..."
-4. 故事要包含明确的情绪表达和社交技能学习
-5. 每页场景描述必须用英文，便于生成插图
+【创作要求 - 针对自闭症儿童特殊需求】
 
-请创作一个完整的绘本故事，包含以下内容：
-1. 一个简单明了的故事标题
-2. ${story.pages}页的故事内容，每页包含：
-   - 页面标题（简短明了）
-   - 故事文本（2-3句话，语言简洁直白）
-   - 英文场景描述（用于DALL-E 3生成插图）
+📚 **语言特点**：
+1. 每页2-3句话，每句不超过15个字
+2. 使用简单、直接、具体的表达
+3. 避免抽象概念、比喻、讽刺或复杂隐喻
+4. 重复使用相同句型："${characterName}看到..."、"${characterName}感到..."、"${characterName}决定..."
+5. 多用动作词和感受词，少用形容词
 
-要求：
-- 故事要体现"${educationalTopic}"这个教育主题
-- 语言要极其简单，适合自闭症儿童理解
-- 情节要积极向上，有明确的行为示范
-- 每页的故事要有重复的模式，便于记忆
+🎭 **情节设计**：
+1. 故事要生动有趣，有明确的起承转合
+2. 包含具体的生活场景和真实的互动情况
+3. 每页都要有具体的行为示范，便于孩子模仿学习
+4. 情节要有适度的戏剧张力，但结局必须积极正面
+5. 融入日常生活元素，让孩子有代入感
 
-请严格按照以下JSON格式返回：
+📖 **教育价值**：
+1. 紧密围绕"${educationalTopic}"展开，每页都要体现这个主题
+2. 提供明确的道德指导和行为示范
+3. 包含情绪识别和表达的学习内容
+4. 展示解决问题的具体步骤和方法
+5. 适合老师在课堂上使用，有讨论和扩展的空间
+
+🎨 **插画描述要求（极其重要）**：
+1. 每页的英文场景描述必须精确对应故事内容
+2. 场景描述要包含：${characterName}的具体动作、表情、所在环境、互动对象
+3. 确保${characterName}在每页中的外貌特征完全一致：${characterDescription}
+4. 场景要生动具体，能够准确传达故事情感和教育主题
+5. 环境描述要详细，包括背景、物品、其他角色等
+
+【故事结构指导】
+- 第1页：介绍${characterName}和基本情境
+- 第2-3页：遇到与"${educationalTopic}"相关的挑战或情况
+- 第4-5页：${characterName}的思考过程和尝试解决
+- 第6页及以后：积极的结果和明确的教育总结
+
+【特殊创作指导】
+1. 故事要富有想象力和创意，但情节必须贴近儿童现实生活
+2. 每页要有足够的视觉元素供插画师创作
+3. 对话要自然真实，符合${character.age}岁儿童的语言特点
+4. 情感表达要明确具体，避免含糊不清的描述
+5. 行为示范要积极正面，具有可操作性
+
+⚠️ **严格要求**：
+- 角色外貌特征在整个故事中绝对不能改变
+- 每页插画描述必须与故事内容完美匹配
+- 教育主题必须贯穿始终，不能偏离
+- 语言必须简单直白，但情节要生动有趣
+
+请创作一个完整的绘本故事，严格按照以下JSON格式返回：
+
 {
-  "title": "故事标题",
+  "title": "引人入胜但简洁的故事标题",
   "pages": [
     {
       "pageNumber": 1,
-      "title": "第一页标题",
-      "content": "第一页的故事内容（2-3句话）...",
-      "sceneDescription": "English scene description for illustration generation"
+      "title": "简短有趣的页面标题",
+      "content": "生动但简洁的故事内容（2-3句话，用词简单但情节有趣）",
+      "sceneDescription": "详细的英文插画描述，必须精确对应故事内容，包含${characterName}的一致外貌特征、具体动作、表情、环境、其他角色等"
     },
     {
       "pageNumber": 2,
       "title": "第二页标题",
-      "content": "第二页的故事内容（2-3句话）...",
-      "sceneDescription": "English scene description for illustration generation"
+      "content": "第二页内容...",
+      "sceneDescription": "第二页插画描述（确保${characterName}外貌与第一页完全一致）"
     }
     // ... 继续到第${story.pages}页
   ],
-  "educationalMessage": "这个故事传达的教育意义总结"
-}`;
+  "educationalMessage": "深度的教育意义总结，适合老师教学使用",
+  "teachingTips": "给老师的教学建议和讨论要点"
+}
+
+记住：故事要生动有趣但语言简单，教育意义要深刻，插画要完美对应内容，角色外貌要绝对一致！`;
 }
 
 /**
@@ -586,9 +766,19 @@ async function generateImagesForPages(pages, character, imageEngine, onProgress,
 function buildImagePrompt(page, character) {
   // 从场景描述中提取情绪、动作和环境信息
   const sceneInfo = extractSceneInfo(page.sceneDescription || '');
+  
+  // 获取角色的详细描述，确保一致性
+  const characterDescription = generateCharacterDescription(character);
+  const characterName = character.name || '主角';
 
-  // 使用专业的自闭症友好关键词模块生成提示词
-  const prompt = generateAutismFriendlyPrompt({
+  // 构建强调角色一致性和内容对应的提示词
+  const consistencyPrompt = `IMPORTANT: Character consistency - The character ${characterName} must have exactly these features throughout: ${characterDescription}. `;
+  
+  // 构建内容对应的提示词
+  const contentPrompt = `Scene must precisely match this story content: "${page.content || ''}". `;
+  
+  // 使用专业的自闭症友好关键词模块生成基础提示词
+  const basePrompt = generateAutismFriendlyPrompt({
     character: character,
     sceneDescription: page.sceneDescription || 'A simple scene',
     emotion: sceneInfo.emotion,
@@ -596,7 +786,11 @@ function buildImagePrompt(page, character) {
     environment: sceneInfo.environment
   });
 
-  return prompt;
+  // 组合最终提示词，强调一致性和对应性
+  const finalPrompt = `${consistencyPrompt}${contentPrompt}${basePrompt}. Children's book illustration style, clear character features, consistent appearance, educational scene, appropriate for autism-friendly design.`;
+
+  console.log(`第${page.pageNumber}页DALL-E 3提示词:`, finalPrompt);
+  return finalPrompt;
 }
 
 /**
@@ -607,56 +801,165 @@ function buildImagePrompt(page, character) {
  */
 function buildLiblibImagePrompt(page, character) {
   const characterDescription = generateCharacterDescription(character);
-  const sceneDescription = page.sceneDescription || `${character.name} in a children's book scene`;
+  const characterName = character.name || '主角';
+  const sceneDescription = page.sceneDescription || `${characterName} in a children's book scene`;
   
-  // LiblibAI适用的提示词格式
-  return `Children's book illustration, ${characterDescription}, ${sceneDescription}, cute cartoon style, simple 2D art, bright colors, child-friendly, educational, wholesome, appropriate for children aged 3-7, clean background, storybook style`;
+  // 构建强调角色一致性的描述
+  const consistencyNote = `CONSISTENT CHARACTER: ${characterName} with ${characterDescription}`;
+  
+  // 构建故事内容对应的描述
+  const storyContent = page.content ? `, showing exactly this scene: ${page.content}` : '';
+  
+  // LiblibAI适用的完整提示词格式，强调一致性和准确性
+  const prompt = `Children's book illustration, ${consistencyNote}, ${sceneDescription}${storyContent}, cute cartoon style, simple 2D art, bright colors, child-friendly, educational, wholesome, appropriate for children aged 3-7, clean background, storybook style, character must look exactly the same in every image, precise scene matching, autism-friendly design`;
+  
+  console.log(`第${page.pageNumber}页LiblibAI提示词:`, prompt);
+  return prompt;
 }
 
 /**
  * 生成备用内容（当API调用失败时使用）
  */
-function generateFallbackContent({ character, story }) {
+function generateFallbackContent({ character, story, content }) {
   const characterName = character.name || '主角';
   const pages = [];
 
-  // 为自闭症儿童设计的简单故事模板
-  const simpleStoryTemplates = [
-    {
-      title: "认识自己",
-      content: `${characterName}看着镜子。${characterName}很开心。`,
-      sceneDescription: "character looking at mirror and smiling"
-    },
-    {
-      title: "学会问好",
-      content: `${characterName}见到朋友。${characterName}说："你好！"`,
-      sceneDescription: "character waving hello to a friend"
-    },
-    {
-      title: "分享玩具",
-      content: `${characterName}有一个玩具。${characterName}和朋友一起玩。`,
-      sceneDescription: "character sharing a toy with a friend"
-    },
-    {
-      title: "表达感受",
-      content: `${characterName}感到开心。${characterName}笑了。`,
-      sceneDescription: "character expressing happiness with a big smile"
+  // 根据用户的内容选择确定主题
+  let educationalTopic = '学会分享与合作';
+  let storyTitle = `${characterName}的成长故事`;
+
+  if (content) {
+    if (content.educationalTopic || content.finalTopic) {
+      educationalTopic = content.educationalTopic || content.finalTopic;
+      storyTitle = `${characterName}的${educationalTopic}故事`;
+    } else if (content.selectedTopic) {
+      educationalTopic = content.selectedTopic;
+      storyTitle = `${characterName}的${educationalTopic}故事`;
+    } else if (content.customContent && content.customContent.length > 0) {
+      const shortContent = content.customContent.length > 10 
+        ? content.customContent.substring(0, 10) + '...'
+        : content.customContent;
+      educationalTopic = shortContent;
+      storyTitle = `${characterName}的学习故事`;
     }
-  ];
+  }
+
+  // 为自闭症儿童设计的简单故事模板（根据主题调整）
+  const getTemplateByTopic = (topic) => {
+    if (topic.includes('分享') || topic.includes('合作')) {
+      return [
+        {
+          title: "认识分享",
+          content: `${characterName}有很多玩具。${characterName}想要分享。`,
+          sceneDescription: "character with toys, looking happy"
+        },
+        {
+          title: "学会分享",
+          content: `${characterName}把玩具给朋友。朋友很开心。`,
+          sceneDescription: "character sharing toys with friends"
+        },
+        {
+          title: "一起玩耍",
+          content: `${characterName}和朋友一起玩。大家都很快乐。`,
+          sceneDescription: "character playing with friends together"
+        },
+        {
+          title: "分享的快乐",
+          content: `${characterName}感到很开心。分享让人快乐。`,
+          sceneDescription: "character smiling happily with friends"
+        }
+      ];
+    } else if (topic.includes('勇敢') || topic.includes('自信')) {
+      return [
+        {
+          title: "遇到困难",
+          content: `${characterName}遇到了困难。${characterName}有点害怕。`,
+          sceneDescription: "character facing a challenge, looking worried"
+        },
+        {
+          title: "鼓起勇气",
+          content: `${characterName}深呼吸。${characterName}决定试一试。`,
+          sceneDescription: "character taking a deep breath, looking determined"
+        },
+        {
+          title: "勇敢尝试",
+          content: `${characterName}勇敢地行动了。${characterName}做得很好。`,
+          sceneDescription: "character bravely taking action"
+        },
+        {
+          title: "变得自信",
+          content: `${characterName}成功了。${characterName}感到很自豪。`,
+          sceneDescription: "character feeling proud and confident"
+        }
+      ];
+    } else if (topic.includes('友谊') || topic.includes('朋友')) {
+      return [
+        {
+          title: "寻找朋友",
+          content: `${characterName}想要交朋友。${characterName}主动问好。`,
+          sceneDescription: "character approaching other children friendly"
+        },
+        {
+          title: "友好相处",
+          content: `${characterName}和新朋友聊天。他们聊得很开心。`,
+          sceneDescription: "character talking with new friends"
+        },
+        {
+          title: "互相帮助",
+          content: `朋友需要帮助。${characterName}主动帮忙。`,
+          sceneDescription: "character helping a friend"
+        },
+        {
+          title: "珍贵友谊",
+          content: `${characterName}有了好朋友。友谊很珍贵。`,
+          sceneDescription: "character with good friends, all smiling"
+        }
+      ];
+    } else {
+      // 默认通用模板
+      return [
+        {
+          title: "开始学习",
+          content: `${characterName}开始学习新事物。${characterName}很认真。`,
+          sceneDescription: "character learning something new"
+        },
+        {
+          title: "努力练习",
+          content: `${characterName}认真练习。${characterName}不放弃。`,
+          sceneDescription: "character practicing with determination"
+        },
+        {
+          title: "获得进步",
+          content: `${characterName}有了进步。${characterName}很高兴。`,
+          sceneDescription: "character showing improvement, feeling happy"
+        },
+        {
+          title: "学会成长",
+          content: `${characterName}学会了很多。${characterName}变得更棒了。`,
+          sceneDescription: "character feeling accomplished and grown"
+        }
+      ];
+    }
+  };
+
+  const templates = getTemplateByTopic(educationalTopic);
 
   for (let i = 1; i <= story.pages; i++) {
-    const template = simpleStoryTemplates[(i - 1) % simpleStoryTemplates.length];
+    const template = templates[(i - 1) % templates.length];
     pages.push({
       pageNumber: i,
       title: template.title,
       content: template.content,
-      sceneDescription: template.sceneDescription
+      sceneDescription: template.sceneDescription,
+      fallbackEmoji: ['🌈', '🦋', '🌸', '🌺', '🍀', '⭐', '🌙', '☀️', '🌻', '🎈'][i % 10]
     });
   }
 
   return {
-    title: `${characterName}的成长故事`,
+    title: storyTitle,
     pages: pages,
-    educationalMessage: `通过这个简单的故事，孩子们可以学习基本的社交技能和情绪表达。`
+    educationalMessage: `通过这个关于"${educationalTopic}"的故事，孩子们可以学习重要的品格和技能。`,
+    contentMode: content?.mode || 'fallback',
+    finalEducationalTopic: educationalTopic
   };
 }

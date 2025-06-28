@@ -4,17 +4,18 @@ import { Label } from '@/components/ui/label.jsx'
 import { Textarea } from '@/components/ui/textarea.jsx'
 import { Switch } from '@/components/ui/switch.jsx'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group.jsx'
-import { ArrowLeft, Sparkles, GraduationCap, Loader2, Zap, Palette, Users } from 'lucide-react'
+import { ArrowLeft, Sparkles, GraduationCap, Loader2, Zap, Palette, Settings, Edit3, CheckCircle } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
-import { generatePictureBook } from '@/lib/openai.js'
+import { generatePictureBook, analyzeCustomContent } from '@/lib/openai.js'
 
 export default function ContentSetupPage() {
   const navigate = useNavigate()
   const [contentData, setContentData] = useState({
     isCustom: false,
     customContent: '',
+    selectedTopic: '', // 新增：选中的主题示例
     imageEngine: 'liblibai', // 默认使用LiblibAI
-    useCharacterConsistency: true // 默认启用角色一致性
+    useCharacterConsistency: true // 默认启用角色一致性（在代码中强制启用，不显示给用户）
   })
   const [isGenerating, setIsGenerating] = useState(false)
   const [generationStatus, setGenerationStatus] = useState('')
@@ -42,6 +43,17 @@ export default function ContentSetupPage() {
     '学会尊重他人'
   ]
 
+  // 处理主题示例选择
+  const handleTopicSelect = (topic) => {
+    if (contentData.selectedTopic === topic) {
+      // 如果点击的是已选中的主题，则取消选择
+      setContentData(prev => ({ ...prev, selectedTopic: '' }))
+    } else {
+      // 选择新主题
+      setContentData(prev => ({ ...prev, selectedTopic: topic, isCustom: false }))
+    }
+  }
+
   const handleGenerate = async () => {
     setIsGenerating(true)
     setGenerationStatus('正在准备生成参数...')
@@ -62,10 +74,43 @@ export default function ContentSetupPage() {
         ...characterDataRaw // 用实际数据覆盖默认值
       }
 
-      // 准备教学内容数据
+      // 根据用户选择确定教学内容
+      let educationalTopic = '';
+      let contentMode = 'random'; // random, selected, custom
+
+      if (contentData.isCustom) {
+        // 模式3：用户选择自定义教学内容
+        contentMode = 'custom';
+        setGenerationStatus('正在分析您的自定义教学内容...')
+        setGenerationProgress(10)
+        
+        try {
+          // 调用GPT-4o分析用户的自定义内容
+          const analyzedContent = await analyzeCustomContent(contentData.customContent);
+          educationalTopic = analyzedContent.analyzedTopic;
+          setGenerationStatus('自定义内容分析完成，开始生成故事...')
+          setGenerationProgress(15)
+        } catch (error) {
+          console.error('自定义内容分析失败:', error);
+          // 如果分析失败，直接使用用户输入的内容
+          educationalTopic = contentData.customContent;
+        }
+      } else if (contentData.selectedTopic) {
+        // 模式2：用户选择了主题示例
+        contentMode = 'selected';
+        educationalTopic = contentData.selectedTopic;
+      } else {
+        // 模式1：随机生成
+        contentMode = 'random';
+        educationalTopic = randomEducationalTopics[Math.floor(Math.random() * randomEducationalTopics.length)];
+      }
+
+      // 准备教学内容数据，强制启用角色一致性
       const finalContentData = {
         ...contentData,
-        randomTopic: contentData.isCustom ? null : randomEducationalTopics[Math.floor(Math.random() * randomEducationalTopics.length)]
+        useCharacterConsistency: true, // 强制启用角色一致性
+        mode: contentMode, // 记录内容生成模式
+        finalTopic: educationalTopic // 最终确定的教学主题
       }
 
       setGenerationStatus('正在调用GPT-4生成故事内容...')
@@ -75,9 +120,12 @@ export default function ContentSetupPage() {
       const generatedBook = await generatePictureBook({
         character: characterData,
         story: storyData,
-        content: finalContentData,
+        content: {
+          ...finalContentData,
+          educationalTopic: educationalTopic // 传递确定的教学主题
+        },
         imageEngine: finalContentData.imageEngine,
-        useCharacterConsistency: finalContentData.useCharacterConsistency,
+        useCharacterConsistency: true, // 强制启用角色一致性
         onProgress: (status, progress) => {
           setGenerationStatus(status)
           setGenerationProgress(progress)
@@ -89,6 +137,8 @@ export default function ContentSetupPage() {
       // 调试信息
       console.log('ContentSetupPage - 生成的绘本数据:', generatedBook);
       console.log('ContentSetupPage - 最终内容数据:', finalContentData);
+      console.log('ContentSetupPage - 内容生成模式:', contentMode);
+      console.log('ContentSetupPage - 最终教学主题:', educationalTopic);
 
       // 保存所有数据
       localStorage.setItem('contentData', JSON.stringify(finalContentData))
@@ -123,6 +173,17 @@ export default function ContentSetupPage() {
     navigate('/story-setup')
   }
 
+  // 获取当前选择状态的描述
+  const getSelectionStatus = () => {
+    if (contentData.isCustom) {
+      return '自定义教学内容模式'
+    } else if (contentData.selectedTopic) {
+      return `已选择主题：${contentData.selectedTopic}`
+    } else {
+      return '智能随机生成模式'
+    }
+  }
+
   if (isGenerating) {
     return (
       <div className="min-h-screen bg-white flex flex-col items-center justify-center">
@@ -142,6 +203,12 @@ export default function ContentSetupPage() {
 
           {/* 生成步骤指示 */}
           <div className="space-y-2 text-left">
+            {contentData.isCustom && (
+              <div className={`flex items-center space-x-2 ${generationProgress >= 15 ? 'text-green-600' : 'text-gray-400'}`}>
+                <div className={`w-2 h-2 rounded-full ${generationProgress >= 15 ? 'bg-green-500' : 'bg-gray-300'}`}></div>
+                <span className="text-sm">GPT-4o 自定义内容分析</span>
+              </div>
+            )}
             <div className={`flex items-center space-x-2 ${generationProgress >= 20 ? 'text-green-600' : 'text-gray-400'}`}>
               <div className={`w-2 h-2 rounded-full ${generationProgress >= 20 ? 'bg-green-500' : 'bg-gray-300'}`}></div>
               <span className="text-sm">GPT-4 故事创作</span>
@@ -204,10 +271,14 @@ export default function ContentSetupPage() {
               <Sparkles className="w-6 h-6 text-blue-500 mr-3 mt-1 flex-shrink-0" />
               <div>
                 <h3 className="text-lg font-medium text-gray-800 mb-2">智能教学内容生成</h3>
-                <p className="text-gray-600 text-sm leading-relaxed">
+                <p className="text-gray-600 text-sm leading-relaxed mb-3">
                   系统将根据您设定的角色和故事类型，自动生成适合的教学内容。
                   我们的AI会确保内容既有趣又富有教育意义，帮助孩子在阅读中学习和成长。
                 </p>
+                <div className="flex items-center space-x-2">
+                  <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                  <span className="text-sm font-medium text-blue-800">{getSelectionStatus()}</span>
+                </div>
               </div>
             </div>
           </div>
@@ -249,97 +320,142 @@ export default function ContentSetupPage() {
             </RadioGroup>
           </div>
 
-          {/* 角色一致性选项 */}
-          {contentData.imageEngine === 'liblibai' && (
-            <div className="space-y-4 animate-in slide-in-from-top-2 duration-300">
-              <div className="bg-gradient-to-r from-green-50 to-blue-50 rounded-2xl p-6 border border-green-100">
-                <div className="flex items-start">
-                  <Users className="w-6 h-6 text-green-500 mr-3 mt-1 flex-shrink-0" />
-                  <div className="flex-1">
-                    <h3 className="text-lg font-medium text-gray-800 mb-2">角色一致性功能</h3>
-                    <p className="text-gray-600 text-sm leading-relaxed mb-4">
-                      启用后，系统将基于您提供的风格参考图，先生成标准化的主角形象，
-                      然后使用这个主角形象来生成所有绘本插画，确保角色在整本书中保持一致的外观。
-                    </p>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <Label className="text-base font-medium text-gray-700">启用角色一致性</Label>
-                        <p className="text-sm text-gray-500 mt-1">
-                          使用风格参考图生成标准主角，确保全书角色一致
-                        </p>
-                      </div>
-                      <Switch
-                        checked={contentData.useCharacterConsistency}
-                        onCheckedChange={(checked) => setContentData(prev => ({ ...prev, useCharacterConsistency: checked }))}
-                      />
-                    </div>
-                  </div>
+          {/* 自定义教学内容开关 - 重新设计为更明显的样式 */}
+          <div className={`border-2 rounded-2xl p-6 transition-all duration-300 ${
+            contentData.isCustom 
+              ? 'border-blue-300 bg-blue-50 shadow-lg' 
+              : 'border-gray-200 bg-white hover:border-gray-300 hover:shadow-md'
+          }`}>
+            <div className="flex items-start justify-between">
+              <div className="flex items-start space-x-4">
+                <div className={`p-3 rounded-xl ${
+                  contentData.isCustom ? 'bg-blue-100' : 'bg-gray-100'
+                }`}>
+                  {contentData.isCustom ? (
+                    <Edit3 className="w-6 h-6 text-blue-600" />
+                  ) : (
+                    <Settings className="w-6 h-6 text-gray-600" />
+                  )}
+                </div>
+                <div className="flex-1">
+                  <h3 className={`text-lg font-semibold mb-2 ${
+                    contentData.isCustom ? 'text-blue-900' : 'text-gray-800'
+                  }`}>
+                    自定义教学内容
+                  </h3>
+                  <p className={`text-sm leading-relaxed ${
+                    contentData.isCustom ? 'text-blue-700' : 'text-gray-600'
+                  }`}>
+                    {contentData.isCustom 
+                      ? '您已开启自定义模式，AI将分析您的描述并生成相应的教学内容'
+                      : '默认使用AI智能生成教学内容，或从下方主题示例中选择'
+                    }
+                  </p>
                 </div>
               </div>
-              
-              {contentData.useCharacterConsistency && (
-                <div className="bg-blue-50 rounded-xl p-4 border border-blue-200">
-                  <div className="text-sm text-blue-800">
-                    <div className="flex items-center mb-2">
-                      <div className="w-2 h-2 bg-blue-500 rounded-full mr-2"></div>
-                      <span className="font-medium">角色一致性流程：</span>
-                    </div>
-                    <div className="space-y-1 ml-4 text-blue-700">
-                      <div>1. 使用风格参考图生成标准化主角形象</div>
-                      <div>2. 基于主角形象生成每页插画</div>
-                      <div>3. 确保角色外观在全书中保持一致</div>
-                    </div>
-                  </div>
-                </div>
-              )}
+              <div className="flex flex-col items-center space-y-2">
+                <Switch
+                  checked={contentData.isCustom}
+                  onCheckedChange={(checked) => {
+                    setContentData(prev => ({ 
+                      ...prev, 
+                      isCustom: checked,
+                      selectedTopic: checked ? '' : prev.selectedTopic // 清除选中的主题
+                    }))
+                  }}
+                  className="transform scale-125"
+                />
+                <span className={`text-xs font-medium ${
+                  contentData.isCustom ? 'text-blue-600' : 'text-gray-500'
+                }`}>
+                  {contentData.isCustom ? '开启' : '关闭'}
+                </span>
+              </div>
             </div>
-          )}
 
-          {/* 自定义开关 */}
-          <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
-            <div>
-              <Label className="text-base font-medium text-gray-700">自定义教学内容</Label>
-              <p className="text-sm text-gray-500 mt-1">如需特定的教学主题，请开启此选项</p>
+            {/* 开关状态指示 */}
+            <div className={`mt-4 p-3 rounded-lg ${
+              contentData.isCustom 
+                ? 'bg-blue-100 border border-blue-200' 
+                : 'bg-gray-50 border border-gray-200'
+            }`}>
+              <div className="flex items-center space-x-2">
+                <div className={`w-2 h-2 rounded-full ${
+                  contentData.isCustom ? 'bg-blue-500' : 'bg-gray-400'
+                }`}></div>
+                <span className={`text-sm font-medium ${
+                  contentData.isCustom ? 'text-blue-800' : 'text-gray-600'
+                }`}>
+                  {contentData.isCustom ? '自定义模式已激活' : '智能生成模式'}
+                </span>
+              </div>
             </div>
-            <Switch
-              checked={contentData.isCustom}
-              onCheckedChange={(checked) => setContentData(prev => ({ ...prev, isCustom: checked }))}
-            />
           </div>
 
           {/* 自定义内容输入 */}
           {contentData.isCustom && (
-            <div className="space-y-3 animate-in slide-in-from-top-2 duration-300">
-              <Label htmlFor="customContent" className="text-base font-medium text-gray-700">
-                教学内容描述
-              </Label>
-              <Textarea
-                id="customContent"
-                placeholder="请描述您希望绘本传达的教学内容或价值观，例如：学会分享、培养勇气、理解友谊等..."
-                value={contentData.customContent}
-                onChange={(e) => setContentData(prev => ({ ...prev, customContent: e.target.value }))}
-                className="min-h-[120px] text-base rounded-xl border-gray-200 focus:border-blue-500 resize-none"
-              />
-              <p className="text-sm text-gray-500">
-                提示：简单描述即可，AI会根据您的描述创造完整的故事情节
-              </p>
+            <div className="space-y-4 animate-in slide-in-from-top-2 duration-300">
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-6">
+                <Label htmlFor="customContent" className="text-lg font-semibold text-blue-900 mb-3 block">
+                  请描述您希望的教学内容
+                </Label>
+                <Textarea
+                  id="customContent"
+                  placeholder="请详细描述您希望绘本传达的教学内容或价值观，例如：&#10;• 学会分享玩具和食物&#10;• 培养面对困难的勇气&#10;• 理解友谊的珍贵和维护&#10;• 学习基本的礼貌用语&#10;• 培养独立自主的能力..."
+                  value={contentData.customContent}
+                  onChange={(e) => setContentData(prev => ({ ...prev, customContent: e.target.value }))}
+                  className="min-h-[140px] text-base rounded-xl border-blue-300 focus:border-blue-500 resize-none bg-white"
+                />
+                <div className="mt-3 p-3 bg-blue-100 rounded-lg">
+                  <p className="text-sm text-blue-800">
+                    🤖 <strong>AI分析：</strong>GPT-4o将智能分析您的描述，提取核心教学目标，确保生成的故事精准契合您的期望。
+                  </p>
+                </div>
+              </div>
             </div>
           )}
 
-          {/* 示例教学主题 */}
+          {/* 智能生成主题示例 - 现在可以选择 */}
           {!contentData.isCustom && (
             <div className="space-y-4">
-              <Label className="text-base font-medium text-gray-700">随机教学主题示例</Label>
+              <div className="flex items-center justify-between">
+                <Label className="text-base font-medium text-gray-700">智能生成主题示例</Label>
+                {contentData.selectedTopic && (
+                  <span className="text-sm text-blue-600 bg-blue-50 px-3 py-1 rounded-full flex items-center">
+                    <CheckCircle className="w-4 h-4 mr-1" />
+                    已选择主题
+                  </span>
+                )}
+              </div>
               <div className="grid grid-cols-2 gap-3">
                 {randomEducationalTopics.slice(0, 6).map((topic, index) => (
-                  <div key={index} className="bg-white border border-gray-200 rounded-lg p-3 text-sm text-gray-600 text-center">
-                    {topic}
-                  </div>
+                  <button
+                    key={index}
+                    onClick={() => handleTopicSelect(topic)}
+                    className={`p-3 text-sm text-center rounded-lg border-2 transition-all duration-200 ${
+                      contentData.selectedTopic === topic
+                        ? 'border-blue-500 bg-blue-50 text-blue-900 shadow-md transform scale-105'
+                        : 'border-gray-200 bg-white text-gray-600 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-800'
+                    }`}
+                  >
+                    <div className="flex items-center justify-center space-x-2">
+                      {contentData.selectedTopic === topic && (
+                        <CheckCircle className="w-4 h-4 text-blue-500" />
+                      )}
+                      <span className="font-medium">{topic}</span>
+                    </div>
+                  </button>
                 ))}
               </div>
-              <p className="text-sm text-gray-500 text-center">
-                系统将从这些主题中随机选择，或生成其他适合的教学内容
-              </p>
+              <div className="p-4 bg-gray-50 rounded-lg">
+                <p className="text-sm text-gray-600 text-center">
+                  💡 <strong>提示：</strong>
+                  {contentData.selectedTopic 
+                    ? `已选择"${contentData.selectedTopic}"主题。点击其他主题可以切换，或再次点击取消选择。`
+                    : '点击任何主题示例来选择，或保持不选择让系统智能随机生成。'
+                  }
+                </p>
+              </div>
             </div>
           )}
         </div>
