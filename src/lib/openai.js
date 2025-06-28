@@ -15,8 +15,14 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
  * @param {Object} options - 调用选项
  * @returns {Promise<Object>} API响应
  */
-async function callOpenAIChat(options, retryCount = 0, maxRetries = 3) {
+async function callOpenAIChat(options, retryCount = 0, maxRetries = 8) {
   try {
+    // 在重试前添加随机延迟，避免同时发送多个请求
+    if (retryCount > 0) {
+      const randomDelay = Math.random() * 2000; // 0-2秒随机延迟
+      await new Promise(resolve => setTimeout(resolve, randomDelay));
+    }
+
     const response = await fetch(`${API_BASE_URL}/openai/chat`, {
       method: 'POST',
       headers: {
@@ -33,14 +39,24 @@ async function callOpenAIChat(options, retryCount = 0, maxRetries = 3) {
         console.warn(`OpenAI API频率限制，第${retryCount + 1}次重试...`);
         
         if (retryCount < maxRetries) {
-          // 指数退避：等待时间逐渐增加
-          const waitTime = Math.min(1000 * Math.pow(2, retryCount), 30000); // 最多等待30秒
+          // 更激进的重试策略，确保最大化成功率
+          // 等待时间：15, 30, 60, 120, 240, 480, 600, 600秒
+          const baseWait = 15000; // 基础等待15秒
+          const waitTime = retryCount < 6 
+            ? baseWait * Math.pow(2, retryCount) 
+            : 600000; // 最后两次固定等待10分钟
+          
           console.log(`等待${waitTime/1000}秒后重试...`);
+          console.log(`💡 提示: 如果频繁遇到限制，建议检查OpenAI API的使用配额和频率限制设置`);
           
           await new Promise(resolve => setTimeout(resolve, waitTime));
           return callOpenAIChat(options, retryCount + 1, maxRetries);
         } else {
-          throw new Error(`API频率限制：请求过于频繁，请稍后再试。已重试${maxRetries}次仍失败。`);
+          throw new Error(`API频率限制：经过${maxRetries}次重试仍无法成功。这通常意味着：
+1. API调用频率超出限制 - 建议等待15-30分钟后再试
+2. API配额可能已用完 - 请检查OpenAI账户余额
+3. 网络连接不稳定 - 请检查网络状况
+建议稍后再试，或联系技术支持。`);
         }
       }
       
@@ -48,6 +64,7 @@ async function callOpenAIChat(options, retryCount = 0, maxRetries = 3) {
       throw new Error(error.error || `HTTP ${response.status}: ${response.statusText}`);
     }
 
+    console.log(`✅ OpenAI API调用成功 (重试${retryCount}次)`);
     return await response.json();
   } catch (error) {
     console.error('OpenAI Chat API代理调用失败:', error);
@@ -55,7 +72,7 @@ async function callOpenAIChat(options, retryCount = 0, maxRetries = 3) {
     // 如果是网络错误且还有重试次数，则重试
     if (retryCount < maxRetries && (error.name === 'TypeError' || error.message.includes('fetch'))) {
       console.warn(`网络错误，第${retryCount + 1}次重试...`);
-      const waitTime = 2000 * (retryCount + 1); // 递增等待时间
+      const waitTime = 8000 * (retryCount + 1); // 8, 16, 24, 32, 40, 48, 56, 64秒
       await new Promise(resolve => setTimeout(resolve, waitTime));
       return callOpenAIChat(options, retryCount + 1, maxRetries);
     }
@@ -381,8 +398,67 @@ export async function generatePictureBook({ character, story, content, onProgres
   } catch (error) {
     console.error('生成绘本失败:', error);
     
-    // 如果API调用失败，返回默认内容
-    return generateFallbackContent({ character, story, content });
+    // 向用户报告具体的错误情况
+    onProgress && onProgress('生成失败，正在分析错误原因...', 95);
+    
+    // 分析错误类型并给出精确指导
+    if (error.message.includes('频率限制') || error.message.includes('429')) {
+      console.log('📋 错误分析: OpenAI API频率限制');
+      onProgress && onProgress('❌ API频率限制：建议等待15-30分钟后重试', 100);
+      
+      // 抛出错误，让上层处理，不使用fallback
+      throw new Error(`OpenAI API频率限制：${error.message}
+
+🔧 解决建议：
+1. 等待15-30分钟后再次尝试
+2. 检查OpenAI账户的API使用配额
+3. 如果是付费账户，可能需要升级配额限制
+4. 错开使用高峰时段
+
+💡 系统已进行8次智能重试，但API服务器持续返回频率限制。这是OpenAI服务端的限制，需要等待后重试。`);
+      
+    } else if (error.message.includes('配额') || error.message.includes('quota')) {
+      console.log('📋 错误分析: OpenAI API配额不足');
+      onProgress && onProgress('❌ API配额不足：请充值OpenAI账户', 100);
+      
+      throw new Error(`OpenAI API配额不足：${error.message}
+
+🔧 解决建议：
+1. 登录OpenAI官网检查账户余额
+2. 为OpenAI账户充值
+3. 检查当前的API使用计划
+4. 考虑升级到更高的使用计划
+
+💳 这通常意味着您的OpenAI账户余额已用完，需要充值后才能继续使用。`);
+      
+    } else if (error.message.includes('网络') || error.message.includes('fetch')) {
+      console.log('📋 错误分析: 网络连接问题');
+      onProgress && onProgress('❌ 网络连接异常：请检查网络后重试', 100);
+      
+      throw new Error(`网络连接异常：${error.message}
+
+🔧 解决建议：
+1. 检查您的网络连接状态
+2. 尝试刷新页面后重试
+3. 如果使用VPN，尝试切换节点
+4. 检查防火墙设置是否阻止了API访问
+
+🌐 系统无法连接到OpenAI服务器，请确保网络连接正常。`);
+      
+    } else {
+      console.log('📋 错误分析: 其他API错误');
+      onProgress && onProgress('❌ API调用失败：请稍后重试', 100);
+      
+      throw new Error(`OpenAI API调用失败：${error.message}
+
+🔧 解决建议：
+1. 稍等几分钟后重试
+2. 检查OpenAI服务状态：https://status.openai.com/
+3. 确认API密钥配置正确
+4. 如果问题持续，请联系技术支持
+
+⚠️ 这是一个未预期的API错误，建议稍后重试或检查服务状态。`);
+    }
   }
 }
 

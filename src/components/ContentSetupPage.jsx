@@ -149,24 +149,36 @@ export default function ContentSetupPage() {
     } catch (error) {
       console.error('生成绘本失败:', error)
       
-      // 根据错误类型提供不同的用户提示
-      let errorMessage = '生成失败，请检查网络连接或API配置';
+      // 显示详细的错误信息和解决建议
+      const fullErrorMessage = error.message || '未知错误';
       
-      if (error.message.includes('频率限制') || error.message.includes('429')) {
-        errorMessage = 'API调用频率过高，请等待1-2分钟后再试';
-      } else if (error.message.includes('网络') || error.message.includes('fetch')) {
-        errorMessage = '网络连接异常，请检查网络后重试';
-      } else if (error.message.includes('unauthorized') || error.message.includes('401')) {
-        errorMessage = 'API密钥无效，请检查配置';
-      } else if (error.message.includes('quota') || error.message.includes('billing')) {
-        errorMessage = 'API配额已用完，请检查账户余额';
+      // 提取错误的主要部分作为状态显示
+      let statusMessage = '生成失败';
+      let waitTime = 12000; // 默认12秒
+      
+      if (fullErrorMessage.includes('频率限制') || fullErrorMessage.includes('429')) {
+        statusMessage = '❌ API频率限制：已进行8次重试仍失败，请等待15-30分钟后重试';
+        waitTime = 15000; // 15秒显示时间
+      } else if (fullErrorMessage.includes('配额') || fullErrorMessage.includes('quota')) {
+        statusMessage = '❌ API配额不足：请检查OpenAI账户余额并充值';
+        waitTime = 12000;
+      } else if (fullErrorMessage.includes('网络') || fullErrorMessage.includes('fetch')) {
+        statusMessage = '❌ 网络连接异常：请检查网络连接状态';
+        waitTime = 10000;
+      } else if (fullErrorMessage.includes('unauthorized') || fullErrorMessage.includes('401')) {
+        statusMessage = '❌ API密钥无效：请检查API密钥配置';
+        waitTime = 12000;
+      } else {
+        statusMessage = '❌ 生成失败：请稍后重试或检查服务状态';
+        waitTime = 10000;
       }
       
-      setGenerationStatus(errorMessage)
-
-      // 根据错误类型设置不同的等待时间
-      const waitTime = error.message.includes('频率限制') ? 8000 : 5000;
+      setGenerationStatus(statusMessage)
       
+      // 在控制台输出完整的错误信息供调试
+      console.log('🔍 完整错误信息:', fullErrorMessage);
+      
+      // 显示错误信息一段时间后重置
       setTimeout(() => {
         setIsGenerating(false)
         setGenerationStatus('')
