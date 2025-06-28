@@ -23,7 +23,10 @@ app.use(cors({
     'https://localhost:5173',
     /\.vercel\.app$/,
     /\.zeabur\.app$/,
-    /\.netlify\.app$/
+    /\.netlify\.app$/,
+    /\.pages\.dev$/,  // Cloudflare Pages支持
+    /\.surge\.sh$/,   // Surge.sh支持
+    /\.github\.io$/   // GitHub Pages支持
   ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
