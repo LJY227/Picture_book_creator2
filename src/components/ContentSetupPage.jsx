@@ -6,7 +6,7 @@ import { Switch } from '@/components/ui/switch.jsx'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group.jsx'
 import { ArrowLeft, Sparkles, GraduationCap, Loader2, Zap, Palette, Settings, Edit3, CheckCircle } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
-import { generatePictureBook, analyzeCustomContent } from '@/lib/openai.js'
+import { generatePictureBook } from '@/lib/openai.js'
 
 export default function ContentSetupPage() {
   const navigate = useNavigate()
@@ -74,41 +74,16 @@ export default function ContentSetupPage() {
         ...characterDataRaw // 用实际数据覆盖默认值
       }
 
-      // 根据用户选择确定教学内容
+      // 根据用户选择确定教学内容（简化逻辑，不再调用GPT-4o分析）
       let educationalTopic = '';
       let contentMode = 'random'; // random, selected, custom
 
       if (contentData.isCustom) {
-        // 模式3：用户选择自定义教学内容
+        // 模式3：用户选择自定义教学内容（直接使用用户输入，不再分析）
         contentMode = 'custom';
-        setGenerationStatus('正在分析您的自定义教学内容...')
+        educationalTopic = contentData.customContent; // 直接使用用户输入的内容
+        setGenerationStatus('正在准备自定义教学内容...')
         setGenerationProgress(10)
-        
-        try {
-          // 调用GPT-4o分析用户的自定义内容
-          const analyzedContent = await analyzeCustomContent(contentData.customContent);
-          educationalTopic = analyzedContent.analyzedTopic;
-          setGenerationStatus('自定义内容分析完成，开始生成故事...')
-          setGenerationProgress(15)
-        } catch (error) {
-          console.error('自定义内容分析失败:', error);
-          
-          // 检查是否是429错误
-          if (error.message.includes('频率限制') || error.message.includes('429')) {
-            setGenerationStatus('API调用频率过高，请稍后再试...')
-            // 等待几秒后重置
-            setTimeout(() => {
-              setIsGenerating(false)
-              setGenerationStatus('')
-              setGenerationProgress(0)
-            }, 5000)
-            return
-          }
-          
-          // 如果分析失败，直接使用用户输入的内容
-          educationalTopic = contentData.customContent;
-          setGenerationStatus('内容分析跳过，继续生成故事...')
-        }
       } else if (contentData.selectedTopic) {
         // 模式2：用户选择了主题示例
         contentMode = 'selected';
@@ -130,7 +105,7 @@ export default function ContentSetupPage() {
       setGenerationStatus('正在调用GPT-4生成故事内容...')
       setGenerationProgress(20)
 
-      // 调用API生成绘本内容
+      // 调用API生成绘本内容（现在只有一次API调用）
       const generatedBook = await generatePictureBook({
         character: characterData,
         story: storyData,
@@ -234,12 +209,6 @@ export default function ContentSetupPage() {
 
           {/* 生成步骤指示 */}
           <div className="space-y-2 text-left">
-            {contentData.isCustom && (
-              <div className={`flex items-center space-x-2 ${generationProgress >= 15 ? 'text-green-600' : 'text-gray-400'}`}>
-                <div className={`w-2 h-2 rounded-full ${generationProgress >= 15 ? 'bg-green-500' : 'bg-gray-300'}`}></div>
-                <span className="text-sm">GPT-4o 自定义内容分析</span>
-              </div>
-            )}
             <div className={`flex items-center space-x-2 ${generationProgress >= 20 ? 'text-green-600' : 'text-gray-400'}`}>
               <div className={`w-2 h-2 rounded-full ${generationProgress >= 20 ? 'bg-green-500' : 'bg-gray-300'}`}></div>
               <span className="text-sm">GPT-4 故事创作</span>
@@ -472,7 +441,7 @@ export default function ContentSetupPage() {
                 />
                 <div className="mt-3 p-3 bg-blue-100 rounded-lg">
                   <p className="text-sm text-blue-800">
-                    🤖 <strong>AI分析：</strong>GPT-4o将智能分析您的描述，提取核心教学目标，确保生成的故事精准契合您的期望。
+                    ✨ <strong>直接使用：</strong>您的教学内容将直接传递给故事生成AI，确保生成的故事紧密围绕您的教育目标展开。简化流程，更快生成！
                   </p>
                 </div>
               </div>
