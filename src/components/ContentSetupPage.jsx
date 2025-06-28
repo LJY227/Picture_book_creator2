@@ -204,8 +204,8 @@ export default function ContentSetupPage() {
 
   if (isGenerating) {
     return (
-      <div className="min-h-screen bg-white flex flex-col items-center justify-center">
-        <div className="text-center max-w-md mx-auto">
+      <div className="min-h-screen bg-white flex flex-col items-center justify-center px-4">
+        <div className="text-center max-w-sm sm:max-w-md mx-auto w-full">
           <Loader2 className="w-16 h-16 text-blue-500 animate-spin mx-auto mb-6" />
           <h2 className="text-2xl font-medium text-gray-800 mb-4">正在生成您的专属绘本...</h2>
           <p className="text-gray-500 mb-6">{generationStatus || '请稍候，我们正在为您创造一个精彩的故事'}</p>
@@ -308,8 +308,8 @@ export default function ContentSetupPage() {
       </div>
 
       {/* 主要内容 */}
-      <div className="max-w-2xl mx-auto px-6 py-12">
-        <div className="space-y-8">
+      <div className="max-w-2xl mx-auto px-4 sm:px-6 py-6 sm:py-12 pb-24 sm:pb-32">
+        <div className="space-y-6 sm:space-y-8">
           {/* 默认随机生成说明 */}
           <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-2xl p-6 border border-blue-100">
             <div className="flex items-start">
@@ -472,7 +472,7 @@ export default function ContentSetupPage() {
                   </span>
                 )}
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {randomEducationalTopics.slice(0, 6).map((topic, index) => (
                   <button
                     key={index}
@@ -507,19 +507,19 @@ export default function ContentSetupPage() {
       </div>
 
       {/* 底部按钮 */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 px-6 py-4">
-        <div className="max-w-2xl mx-auto flex justify-between">
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 px-4 sm:px-6 py-3 sm:py-4 safe-area-bottom">
+        <div className="max-w-2xl mx-auto flex flex-col sm:flex-row gap-3 sm:justify-between">
           <Button
             onClick={handleBack}
             variant="outline"
-            className="px-6 py-3 rounded-xl border-gray-200 hover:bg-gray-50"
+            className="w-full sm:w-auto px-4 sm:px-6 py-3 rounded-xl border-gray-200 hover:bg-gray-50 order-2 sm:order-1"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
             上一步
           </Button>
           <Button
             onClick={handleGenerate}
-            className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white px-8 py-3 rounded-xl font-medium shadow-lg hover:shadow-xl transition-all duration-300"
+            className="w-full sm:w-auto bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white px-6 sm:px-8 py-3 rounded-xl font-medium shadow-lg hover:shadow-xl transition-all duration-300 order-1 sm:order-2"
           >
             <Sparkles className="w-4 h-4 mr-2" />
             立即生成绘本

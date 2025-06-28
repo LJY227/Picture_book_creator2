@@ -2,6 +2,82 @@
 @tailwind components;
 @tailwind utilities;
 
+/* 移动端安全区域适配 */
+@layer utilities {
+  .safe-area-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  
+  .safe-area-top {
+    padding-top: env(safe-area-inset-top);
+  }
+  
+  .safe-area-left {
+    padding-left: env(safe-area-inset-left);
+  }
+  
+  .safe-area-right {
+    padding-right: env(safe-area-inset-right);
+  }
+}
+
+/* 滚动行为优化 */
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+  
+  /* 移动端触摸滚动优化 */
+  body {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+  
+  /* 防止移动端缩放 */
+  * {
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+/* 移动端响应式字体大小 */
+@layer base {
+  .text-responsive-sm {
+    @apply text-sm sm:text-base;
+  }
+  
+  .text-responsive-base {
+    @apply text-base sm:text-lg;
+  }
+  
+  .text-responsive-lg {
+    @apply text-lg sm:text-xl;
+  }
+  
+  .text-responsive-xl {
+    @apply text-xl sm:text-2xl;
+  }
+}
+
+/* 移动端按钮优化 */
+@layer components {
+  .btn-mobile-friendly {
+    @apply min-h-[44px] min-w-[44px] touch-manipulation;
+  }
+}
+
+/* 移动端表单输入优化 */
+@layer base {
+  input, textarea, select {
+    font-size: 16px; /* 防止iOS缩放 */
+  }
+  
+  @media (min-width: 640px) {
+    input, textarea, select {
+      font-size: inherit;
+    }
+  }
+}
+
 @layer base {
   :root {
     --background: 0 0% 100%;

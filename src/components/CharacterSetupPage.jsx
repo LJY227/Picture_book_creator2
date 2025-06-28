@@ -102,8 +102,8 @@ export default function CharacterSetupPage() {
       </div>
 
       {/* 主要内容 */}
-      <div className="max-w-2xl mx-auto px-6 py-12">
-        <div className="space-y-8">
+      <div className="max-w-2xl mx-auto px-4 sm:px-6 py-6 sm:py-12 pb-24 sm:pb-32">
+        <div className="space-y-6 sm:space-y-8">
           {/* 角色姓名 */}
           <div className="space-y-3">
             <Label htmlFor="name" className="text-base font-medium text-gray-700">
@@ -142,7 +142,7 @@ export default function CharacterSetupPage() {
             <RadioGroup
               value={characterData.identity}
               onValueChange={(value) => setCharacterData(prev => ({ ...prev, identity: value }))}
-              className="flex space-x-8"
+              className="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-8"
             >
               <div className="flex items-center space-x-2">
                 <RadioGroupItem value="human" id="human" />
@@ -161,7 +161,7 @@ export default function CharacterSetupPage() {
             <RadioGroup
               value={characterData.gender}
               onValueChange={(value) => setCharacterData(prev => ({ ...prev, gender: value }))}
-              className="flex space-x-8"
+              className="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-8"
             >
               <div className="flex items-center space-x-2">
                 <RadioGroupItem value="boy" id="boy" />
@@ -300,19 +300,19 @@ export default function CharacterSetupPage() {
       </div>
 
       {/* 底部按钮 */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 px-6 py-4">
-        <div className="max-w-2xl mx-auto flex justify-between">
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 px-4 sm:px-6 py-3 sm:py-4 safe-area-bottom">
+        <div className="max-w-2xl mx-auto flex flex-col sm:flex-row gap-3 sm:justify-between">
           <Button
             onClick={handleBack}
             variant="outline"
-            className="px-6 py-3 rounded-xl border-gray-200 hover:bg-gray-50"
+            className="w-full sm:w-auto px-4 sm:px-6 py-3 rounded-xl border-gray-200 hover:bg-gray-50 order-2 sm:order-1"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
             返回首页
           </Button>
           <Button
             onClick={handleNext}
-            className="bg-blue-500 hover:bg-blue-600 text-white px-8 py-3 rounded-xl"
+            className="w-full sm:w-auto bg-blue-500 hover:bg-blue-600 text-white px-6 sm:px-8 py-3 rounded-xl order-1 sm:order-2"
           >
             下一步
             <ArrowRight className="w-4 h-4 ml-2" />

@@ -512,67 +512,73 @@ export default function PreviewPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50">
       {/* 顶部导航 */}
-      <div className="bg-white/80 backdrop-blur-sm border-b border-gray-200 px-6 py-4">
-        <div className="max-w-4xl mx-auto flex items-center justify-between">
+      <div className="bg-white/80 backdrop-blur-sm border-b border-gray-200 px-4 sm:px-6 py-3 sm:py-4">
+        <div className="max-w-4xl mx-auto flex flex-col sm:flex-row items-start sm:items-center justify-between space-y-3 sm:space-y-0">
           <div className="flex items-center">
-            <BookOpen className="w-6 h-6 text-blue-500 mr-3" />
-            <h1 className="text-xl font-medium text-gray-800">绘本预览</h1>
+            <BookOpen className="w-5 h-5 sm:w-6 sm:h-6 text-blue-500 mr-2 sm:mr-3" />
+            <h1 className="text-lg sm:text-xl font-medium text-gray-800">绘本预览</h1>
           </div>
-          <div className="flex items-center space-x-4">
-            <span className="text-sm text-gray-500">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center space-y-2 sm:space-y-0 sm:space-x-4 w-full sm:w-auto">
+            <span className="text-sm text-gray-500 mb-2 sm:mb-0">
               {currentPage + 1} / {bookData.pages.length}
             </span>
-            <Button onClick={handleBackHome} variant="outline" size="sm">
-              <Home className="w-4 h-4 mr-2" />
-              返回首页
-            </Button>
-            <Button onClick={handleRecreate} variant="outline" size="sm">
-              <RotateCcw className="w-4 h-4 mr-2" />
-              重新创建
-            </Button>
-            {/* 综合保存故事按钮 */}
-            <Button 
-              onClick={handleSaveCompleteStory} 
-              variant="default" 
-              size="sm"
-              disabled={savingStory}
-              className="bg-green-600 hover:bg-green-700"
-            >
-              {savingStory ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  保存中 {saveProgress}%
-                </>
-              ) : (
-                <>
-                  <Save className="w-4 h-4 mr-2" />
-                  保存完整故事
-                </>
-              )}
-            </Button>
+            <div className="flex flex-wrap gap-2 sm:gap-3 w-full sm:w-auto">
+              <Button onClick={handleBackHome} variant="outline" size="sm" className="flex-1 sm:flex-none">
+                <Home className="w-4 h-4 mr-1 sm:mr-2" />
+                <span className="hidden sm:inline">返回首页</span>
+                <span className="sm:hidden">首页</span>
+              </Button>
+              <Button onClick={handleRecreate} variant="outline" size="sm" className="flex-1 sm:flex-none">
+                <RotateCcw className="w-4 h-4 mr-1 sm:mr-2" />
+                <span className="hidden sm:inline">重新创建</span>
+                <span className="sm:hidden">重建</span>
+              </Button>
+              {/* 综合保存故事按钮 */}
+              <Button 
+                onClick={handleSaveCompleteStory} 
+                variant="default" 
+                size="sm"
+                disabled={savingStory}
+                className="flex-1 sm:flex-none bg-green-600 hover:bg-green-700"
+              >
+                {savingStory ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-1 sm:mr-2 animate-spin" />
+                    <span className="hidden sm:inline">保存中 {saveProgress}%</span>
+                    <span className="sm:hidden">{saveProgress}%</span>
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-4 h-4 mr-1 sm:mr-2" />
+                    <span className="hidden sm:inline">保存完整故事</span>
+                    <span className="sm:hidden">保存</span>
+                  </>
+                )}
+              </Button>
+            </div>
           </div>
         </div>
       </div>
 
       {/* 绘本内容 */}
-      <div className="max-w-4xl mx-auto px-6 py-12">
-        <div className="bg-white rounded-3xl shadow-2xl overflow-hidden">
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 sm:py-12">
+        <div className="bg-white rounded-2xl sm:rounded-3xl shadow-xl sm:shadow-2xl overflow-hidden">
           {/* 页面内容 */}
-          <div className="aspect-[4/3] p-12 flex flex-col items-center justify-center text-center">
+          <div className="aspect-[4/3] p-6 sm:p-12 flex flex-col items-center justify-center text-center">
             {currentPageData.type === 'cover' && (
-              <div className="space-y-6">
-                <div className="text-8xl mb-6">{currentPageData.image}</div>
-                <h1 className="text-4xl font-bold text-gray-800 mb-4">
+              <div className="space-y-4 sm:space-y-6">
+                <div className="text-6xl sm:text-8xl mb-4 sm:mb-6">{currentPageData.image}</div>
+                <h1 className="text-2xl sm:text-4xl font-bold text-gray-800 mb-3 sm:mb-4 px-4">
                   {currentPageData.title}
                 </h1>
-                <p className="text-xl text-gray-600 max-w-md">
+                <p className="text-base sm:text-xl text-gray-600 max-w-sm sm:max-w-md px-4">
                   {currentPageData.subtitle}
                 </p>
               </div>
             )}
 
             {currentPageData.type === 'content' && (
-              <div className="space-y-8 max-w-2xl">
+              <div className="space-y-6 sm:space-y-8 max-w-full sm:max-w-2xl px-4 sm:px-0">
                 {/* 智能图像显示 */}
                 <ImageDisplay
                   pageData={currentPageData}
@@ -587,10 +593,10 @@ export default function PreviewPage() {
                   onOptimize={() => handleOptimizeImage(currentPage)}
                 />
 
-                <h2 className="text-2xl font-semibold text-gray-800">
+                <h2 className="text-xl sm:text-2xl font-semibold text-gray-800">
                   {currentPageData.title}
                 </h2>
-                <p className="text-lg text-gray-700 leading-relaxed">
+                <p className="text-base sm:text-lg text-gray-700 leading-relaxed">
                   {currentPageData.content}
                 </p>
 
@@ -608,12 +614,12 @@ export default function PreviewPage() {
                 )}
 
                 {/* 页面操作按钮 */}
-                <div className="flex flex-wrap gap-3 justify-center">
+                <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 justify-center w-full sm:w-auto">
                   <Button
                     onClick={() => handleEditPage(currentPage)}
                     variant="outline"
                     size="sm"
-                    className="flex items-center"
+                    className="flex items-center justify-center w-full sm:w-auto"
                   >
                     <Edit3 className="w-4 h-4 mr-2" />
                     编辑内容
@@ -624,17 +630,19 @@ export default function PreviewPage() {
                     variant="outline"
                     size="sm"
                     disabled={regeneratingImage === currentPage}
-                    className="flex items-center"
+                    className="flex items-center justify-center w-full sm:w-auto"
                   >
                     {regeneratingImage === currentPage ? (
                       <>
                         <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        重新生成中...
+                        <span className="hidden sm:inline">重新生成中...</span>
+                        <span className="sm:hidden">生成中...</span>
                       </>
                     ) : (
                       <>
                         <RefreshCw className="w-4 h-4 mr-2" />
-                        重新生成插画
+                        <span className="hidden sm:inline">重新生成插画</span>
+                        <span className="sm:hidden">重新生成</span>
                       </>
                     )}
                   </Button>
@@ -645,12 +653,12 @@ export default function PreviewPage() {
             )}
 
             {currentPageData.type === 'ending' && (
-              <div className="space-y-6">
-                <div className="text-8xl mb-6">{currentPageData.image}</div>
-                <h2 className="text-3xl font-bold text-gray-800 mb-4">
+              <div className="space-y-4 sm:space-y-6">
+                <div className="text-6xl sm:text-8xl mb-4 sm:mb-6">{currentPageData.image}</div>
+                <h2 className="text-2xl sm:text-3xl font-bold text-gray-800 mb-3 sm:mb-4 px-4">
                   {currentPageData.title}
                 </h2>
-                <p className="text-xl text-gray-600 max-w-md">
+                <p className="text-base sm:text-xl text-gray-600 max-w-sm sm:max-w-md px-4">
                   {currentPageData.content}
                 </p>
               </div>
@@ -658,23 +666,25 @@ export default function PreviewPage() {
           </div>
 
           {/* 翻页控制 */}
-          <div className="bg-gray-50 px-8 py-6 flex items-center justify-between">
+          <div className="bg-gray-50 px-4 sm:px-8 py-4 sm:py-6 flex items-center justify-between">
             <Button
               onClick={handlePrevPage}
               disabled={currentPage === 0}
               variant="outline"
+              size="sm"
               className="flex items-center"
             >
-              <ChevronLeft className="w-4 h-4 mr-2" />
-              上一页
+              <ChevronLeft className="w-4 h-4 mr-1 sm:mr-2" />
+              <span className="hidden sm:inline">上一页</span>
+              <span className="sm:hidden">上页</span>
             </Button>
 
-            <div className="flex space-x-2">
+            <div className="flex space-x-1 sm:space-x-2 overflow-x-auto max-w-48 sm:max-w-none">
               {bookData.pages.map((_, index) => (
                 <button
                   key={index}
                   onClick={() => setCurrentPage(index)}
-                  className={`w-3 h-3 rounded-full transition-colors ${
+                  className={`w-2 h-2 sm:w-3 sm:h-3 rounded-full transition-colors flex-shrink-0 ${
                     index === currentPage ? 'bg-blue-500' : 'bg-gray-300'
                   }`}
                 />
@@ -685,18 +695,20 @@ export default function PreviewPage() {
               onClick={handleNextPage}
               disabled={currentPage === bookData.pages.length - 1}
               variant="outline"
+              size="sm"
               className="flex items-center"
             >
-              下一页
-              <ChevronRight className="w-4 h-4 ml-2" />
+              <span className="hidden sm:inline">下一页</span>
+              <span className="sm:hidden">下页</span>
+              <ChevronRight className="w-4 h-4 ml-1 sm:ml-2" />
             </Button>
           </div>
         </div>
 
         {/* 绘本信息 */}
-        <div className="mt-8 bg-white rounded-2xl p-6 shadow-lg">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-gray-800">绘本信息</h3>
+        <div className="mt-6 sm:mt-8 bg-white rounded-xl sm:rounded-2xl p-4 sm:p-6 shadow-lg">
+          <div className="flex items-center justify-between mb-3 sm:mb-4">
+            <h3 className="text-base sm:text-lg font-semibold text-gray-800">绘本信息</h3>
             {bookData.isAIGenerated && (
               <div className="flex items-center space-x-2 bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-xs">
                 <Sparkles className="w-3 h-3" />
@@ -704,7 +716,7 @@ export default function PreviewPage() {
               </div>
             )}
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mb-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 text-sm mb-3 sm:mb-4">
             <div>
               <span className="text-gray-500">主角姓名：</span>
               <span className="font-medium">{bookData.character.name}</span>

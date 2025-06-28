@@ -66,8 +66,8 @@ export default function StorySetupPage() {
       </div>
 
       {/* 主要内容 */}
-      <div className="max-w-2xl mx-auto px-6 py-12">
-        <div className="space-y-10">
+      <div className="max-w-2xl mx-auto px-4 sm:px-6 py-6 sm:py-12 pb-24 sm:pb-32">
+        <div className="space-y-8 sm:space-y-10">
           {/* 故事类型 */}
           <div className="space-y-4">
             <Label className="text-base font-medium text-gray-700">
@@ -127,19 +127,19 @@ export default function StorySetupPage() {
       </div>
 
       {/* 底部按钮 */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 px-6 py-4">
-        <div className="max-w-2xl mx-auto flex justify-between">
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 px-4 sm:px-6 py-3 sm:py-4 safe-area-bottom">
+        <div className="max-w-2xl mx-auto flex flex-col sm:flex-row gap-3 sm:justify-between">
           <Button
             onClick={handleBack}
             variant="outline"
-            className="px-6 py-3 rounded-xl border-gray-200 hover:bg-gray-50"
+            className="w-full sm:w-auto px-4 sm:px-6 py-3 rounded-xl border-gray-200 hover:bg-gray-50 order-2 sm:order-1"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
             上一步
           </Button>
           <Button
             onClick={handleNext}
-            className="bg-blue-500 hover:bg-blue-600 text-white px-8 py-3 rounded-xl"
+            className="w-full sm:w-auto bg-blue-500 hover:bg-blue-600 text-white px-6 sm:px-8 py-3 rounded-xl order-1 sm:order-2"
           >
             下一步
             <ArrowRight className="w-4 h-4 ml-2" />
