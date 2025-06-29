@@ -328,15 +328,28 @@ app.post('/api/qwen/chat', async (req, res) => {
     console.log('🔍 通义千问API调试信息 (OpenAI兼容模式):');
     console.log('  📝 请求参数:', { model, hasMessages: !!messages, messagesCount: messages?.length });
     
-    // 检查多个可能的API密钥环境变量
-    const apiKey = process.env.VITE_QWEN_API_KEY || process.env.DASHSCOPE_API_KEY;
-    console.log('  🔑 API密钥状态:', apiKey ? 
-      `已配置 (${apiKey.substring(0, 10)}...)` : '❌ 未配置');
+    // 1. 优先读取DASHSCOPE_API_KEY（Zeabur推荐）
+    const apiKey = process.env.DASHSCOPE_API_KEY || process.env.VITE_QWEN_API_KEY;
+    if (!apiKey) {
+      console.log('❌ QWEN API KEY 获取失败，请检查Zeabur配置');
+      return res.status(500).json({ 
+        error: "QWEN API KEY 获取失败，请检查Zeabur配置",
+        details: '请在环境变量中配置 DASHSCOPE_API_KEY 或 VITE_QWEN_API_KEY',
+        env_check: {
+          DASHSCOPE_API_KEY: !!process.env.DASHSCOPE_API_KEY,
+          VITE_QWEN_API_KEY: !!process.env.VITE_QWEN_API_KEY,
+          available_vars: Object.keys(process.env).filter(key => key.includes('QWEN') || key.includes('DASHSCOPE'))
+        }
+      });
+    }
+    
+    console.log('  🔑 API密钥状态: 已配置', `(${apiKey.substring(0, 10)}...)`);
     console.log('  🔍 环境变量检查:', {
-      VITE_QWEN_API_KEY: !!process.env.VITE_QWEN_API_KEY,
-      DASHSCOPE_API_KEY: !!process.env.DASHSCOPE_API_KEY
+      DASHSCOPE_API_KEY: !!process.env.DASHSCOPE_API_KEY,
+      VITE_QWEN_API_KEY: !!process.env.VITE_QWEN_API_KEY
     });
     
+    // 2. 按OpenAI chat API格式透传参数
     if (!messages || !Array.isArray(messages)) {
       console.log('❌ 参数验证失败: 缺少messages数组');
       return res.status(400).json({ 
@@ -346,106 +359,42 @@ app.post('/api/qwen/chat', async (req, res) => {
       });
     }
     
-    // 检查API密钥配置
-    if (!apiKey) {
-      console.log('❌ 环境变量检查失败: 通义千问API密钥未配置');
-      return res.status(500).json({ 
-        error: '通义千问API密钥未配置',
-        details: '请在环境变量中配置 VITE_QWEN_API_KEY 或 DASHSCOPE_API_KEY',
-        env_check: {
-          VITE_QWEN_API_KEY: 'not_configured',
-          DASHSCOPE_API_KEY: 'not_configured',
-          available_vars: Object.keys(process.env).filter(key => key.includes('QWEN') || key.includes('DASHSCOPE'))
-        }
-      });
-    }
-    
     console.log(`🤖 使用OpenAI兼容模式调用通义千问API: ${model}`);
     console.log('  📤 消息数量:', messages.length);
-    console.log('  📋 消息预览:', messages.map(m => ({ role: m.role, content: m.content?.substring(0, 50) + '...' })));
     
     const fetch = (await import('node-fetch')).default;
     
-    // 构建标准OpenAI格式请求体
-    const requestBody = {
-      model: model,
-      messages: messages,
-      temperature: temperature || 0.7,
-      max_tokens: max_tokens || 1500,
-      ...otherParams
-    };
+    // 按OpenAI chat API格式透传参数
+    const openaiPayload = req.body;
     
-    console.log('📦 构建的请求体 (OpenAI格式):', {
-      model: requestBody.model,
-      messages_count: requestBody.messages.length,
-      temperature: requestBody.temperature,
-      max_tokens: requestBody.max_tokens
-    });
-    
-    // 调用通义千问API (OpenAI兼容模式)
-    console.log('🌐 发送请求到通义千问API (OpenAI兼容模式)...');
-    const response = await fetch('https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
-      },
-      body: JSON.stringify(requestBody)
-    });
-    
-    console.log(`📡 API响应状态: ${response.status} ${response.statusText}`);
-    
-    const responseText = await response.text();
-    console.log('📄 原始响应内容 (前500字符):', responseText.substring(0, 500));
-    
-    let result;
-    try {
-      result = JSON.parse(responseText);
-    } catch (parseError) {
-      console.error('❌ JSON解析失败:', parseError.message);
-      return res.status(500).json({
-        error: 'API响应格式错误',
-        details: responseText.substring(0, 500),
-        status: response.status
-      });
-    }
-    
-    if (!response.ok) {
-      console.error(`❌ 通义千问API调用失败 (${response.status}):`, result);
-      
-      // 处理特定错误
-      if (response.status === 429) {
-        result.suggestion = '通义千问API调用频率过高，请稍后重试';
-      } else if (response.status === 401) {
-        result.suggestion = '通义千问API密钥无效，请检查配置';
-      } else if (response.status === 400) {
-        result.suggestion = '请求参数错误，请检查输入格式';
+    const qwenResp = await fetch(
+      "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(openaiPayload),
       }
-      
-      return res.status(response.status).json(result);
+    );
+    
+    console.log(`📡 API响应状态: ${qwenResp.status} ${qwenResp.statusText}`);
+    const data = await qwenResp.json();
+
+    // 3. 日志详细报错帮助排查
+    if (!qwenResp.ok) {
+      console.error("QWEN API详细错误响应：", data);
+      return res.status(qwenResp.status).json({ error: data });
     }
-    
+
+    // 4. 返回正常响应
     console.log(`✅ 通义千问API调用成功 (${model})`);
-    console.log('📨 返回结果:', { 
-      has_choices: !!result.choices, 
-      choices_count: result.choices?.length,
-      has_message: !!(result.choices?.[0]?.message),
-      usage: result.usage 
-    });
-    res.json(result);
+    res.json(data);
     
-  } catch (error) {
-    console.error('❌ 通义千问API代理发生异常:', {
-      message: error.message,
-      stack: error.stack,
-      name: error.name
-    });
-    res.status(500).json({ 
-      error: error.message,
-      details: '通义千问服务器内部错误，请稍后重试',
-      error_type: error.name,
-      timestamp: new Date().toISOString()
-    });
+  } catch (err) {
+    console.error("请求QWEN接口异常:", err);
+    res.status(500).json({ error: "服务器内部错误" });
   }
 });
 
@@ -454,7 +403,7 @@ app.get('/api/status', (req, res) => {
   const hasPrimaryKey = !!process.env.VITE_OPENAI_API_KEY;
   const hasSecondaryKey = !!process.env.OPENAI_API_KEY2;
   const hasLiblibConfig = !!(LIBLIB_CONFIG.accessKey && LIBLIB_CONFIG.secretKey);
-  const hasQwenKey = !!process.env.VITE_QWEN_API_KEY;
+  const hasQwenKey = !!(process.env.DASHSCOPE_API_KEY || process.env.VITE_QWEN_API_KEY);
   
   // 双账户配置状态
   const dualAccountStatus = {
@@ -498,9 +447,10 @@ app.get('/api/status', (req, res) => {
       },
       qwen: {
         configured: hasQwenKey,
-        env: 'VITE_QWEN_API_KEY',
+        env: 'DASHSCOPE_API_KEY (优先) 或 VITE_QWEN_API_KEY',
         models: ['qwen-turbo', 'qwen-plus', 'qwen-max'],
-        message: hasQwenKey ? '通义千问API已配置' : '通义千问API密钥未配置'
+        message: hasQwenKey ? '通义千问API已配置' : '通义千问API密钥未配置',
+        priority: 'DASHSCOPE_API_KEY > VITE_QWEN_API_KEY'
       },
       liblib: {
         configured: hasLiblibConfig,
@@ -549,17 +499,17 @@ app.listen(PORT, () => {
   
   // 🔍 启动时环境变量检查
   console.log('\n🔍 环境变量配置检查:');
-  console.log(`  🔑 VITE_QWEN_API_KEY: ${process.env.VITE_QWEN_API_KEY ? 
-    `已配置 (${process.env.VITE_QWEN_API_KEY.substring(0, 10)}...)` : '❌ 未配置'}`);
-  console.log(`  🔑 DASHSCOPE_API_KEY: ${process.env.DASHSCOPE_API_KEY ? 
+  console.log(`  🔑 DASHSCOPE_API_KEY (优先): ${process.env.DASHSCOPE_API_KEY ? 
     `已配置 (${process.env.DASHSCOPE_API_KEY.substring(0, 10)}...)` : '❌ 未配置'}`);
+  console.log(`  🔑 VITE_QWEN_API_KEY (备用): ${process.env.VITE_QWEN_API_KEY ? 
+    `已配置 (${process.env.VITE_QWEN_API_KEY.substring(0, 10)}...)` : '❌ 未配置'}`);
   console.log(`  🔑 VITE_LIBLIB_ACCESS_KEY: ${process.env.VITE_LIBLIB_ACCESS_KEY ? 
     `已配置 (${process.env.VITE_LIBLIB_ACCESS_KEY.substring(0, 10)}...)` : '❌ 未配置'}`);
   console.log(`  🔑 VITE_LIBLIB_SECRET_KEY: ${process.env.VITE_LIBLIB_SECRET_KEY ? 
     `已配置 (${process.env.VITE_LIBLIB_SECRET_KEY.substring(0, 10)}...)` : '❌ 未配置'}`);
   console.log(`  🌐 NODE_ENV: ${process.env.NODE_ENV || '未设置'}`);
   console.log(`  📱 PORT: ${PORT}`);
-  console.log(`  🔧 通义千问模式: OpenAI兼容模式\n`);
+  console.log(`  🔧 通义千问模式: OpenAI兼容模式 (Zeabur优化版)\n`);
 });
 
 export default app;
