@@ -1,4 +1,4 @@
-import { generatePictureBook } from './openai.js';
+import { generatePictureBook } from './qwen.js';
 import { generateStoryIllustrationWithMaster, generateMasterCharacterImage } from './characterConsistency.js';
 import { generateTextToImageComplete, generateImageToImageComplete } from './liblibai.js';
 

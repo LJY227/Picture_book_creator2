@@ -617,7 +617,7 @@ async function generateCustomCharacterDefinition(character) {
   
   try {
     // 使用我们已有的optimizeCharacterDescription函数
-    const { optimizeCharacterDescription, translateDescriptionToEnglish } = await import('./openai.js');
+    const { optimizeCharacterDescription, translateDescriptionToEnglish } = await import('./qwen.js');
     
     const basicInfo = {
       age: age || 6,

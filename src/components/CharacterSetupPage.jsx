@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { ArrowLeft, ArrowRight, User, Sparkles, Settings, Loader2 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { CHARACTER_STRATEGY } from '@/lib/characterConsistency.js'
-import { optimizeCharacterDescription } from '@/lib/openai.js'
+import { optimizeCharacterDescription } from '@/lib/qwen.js'
 
 export default function CharacterSetupPage() {
   const navigate = useNavigate()

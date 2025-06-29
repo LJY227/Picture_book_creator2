@@ -791,7 +791,7 @@ export default function PreviewPage() {
               <div className="text-sm text-gray-600 mb-2 font-medium">AI技术栈</div>
               <div className="flex flex-wrap gap-2">
                 <div className="bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs">
-                  GPT-4 故事创作
+                  通义千问 故事创作
                 </div>
                 <div className={`px-2 py-1 rounded text-xs ${
                   bookData.pages[0]?.imageEngine === 'liblibai' 

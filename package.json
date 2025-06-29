@@ -17,7 +17,6 @@
     "deploy:prepare": "node deploy.js",
     "deploy:zeabur": "node deploy-zeabur.js",
     "deploy:test": "concurrently \"npm run server\" \"npm run preview\"",
-    "deploy:verify": "node verify-deployment.js",
     "postinstall": "echo '📖 使用 npm run deploy:zeabur 准备Zeabur部署'"
   },
   "dependencies": {

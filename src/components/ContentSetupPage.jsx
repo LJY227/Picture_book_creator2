@@ -6,7 +6,7 @@ import { Switch } from '@/components/ui/switch.jsx'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group.jsx'
 import { ArrowLeft, Sparkles, GraduationCap, Loader2, Zap, Palette, Settings, Edit3, CheckCircle } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
-import { generatePictureBook } from '@/lib/openai.js'
+import { generatePictureBook } from '@/lib/qwen.js'
 
 export default function ContentSetupPage() {
   const navigate = useNavigate()
@@ -102,7 +102,7 @@ export default function ContentSetupPage() {
         finalTopic: educationalTopic // 最终确定的教学主题
       }
 
-      setGenerationStatus('正在调用GPT-4生成故事内容...')
+      setGenerationStatus('正在调用通义千问生成故事内容...')
       setGenerationProgress(20)
 
       // 调用API生成绘本内容（现在只有一次API调用）
@@ -160,7 +160,7 @@ export default function ContentSetupPage() {
         statusMessage = '❌ API频率限制：已进行8次重试仍失败，请等待15-30分钟后重试';
         waitTime = 15000; // 15秒显示时间
       } else if (fullErrorMessage.includes('配额') || fullErrorMessage.includes('quota')) {
-        statusMessage = '❌ API配额不足：请检查OpenAI账户余额并充值';
+        statusMessage = '❌ API配额不足：请检查通义千问账户余额并充值';
         waitTime = 12000;
       } else if (fullErrorMessage.includes('网络') || fullErrorMessage.includes('fetch')) {
         statusMessage = '❌ 网络连接异常：请检查网络连接状态';
@@ -223,7 +223,7 @@ export default function ContentSetupPage() {
           <div className="space-y-2 text-left">
             <div className={`flex items-center space-x-2 ${generationProgress >= 20 ? 'text-green-600' : 'text-gray-400'}`}>
               <div className={`w-2 h-2 rounded-full ${generationProgress >= 20 ? 'bg-green-500' : 'bg-gray-300'}`}></div>
-              <span className="text-sm">GPT-4 故事创作</span>
+                                  <span className="text-sm">通义千问 故事创作</span>
             </div>
             <div className={`flex items-center space-x-2 ${generationProgress >= 60 ? 'text-green-600' : 'text-gray-400'}`}>
               <div className={`w-2 h-2 rounded-full ${generationProgress >= 60 ? 'bg-green-500' : 'bg-gray-300'}`}></div>
@@ -246,7 +246,7 @@ export default function ContentSetupPage() {
               <div className="text-red-500 text-xs space-y-1">
                 {generationStatus.includes('频率过高') ? (
                   <>
-                    <div>• OpenAI API调用频率超出限制</div>
+                    <div>• 通义千问API调用频率超出限制</div>
                     <div>• 请等待1-2分钟后重新尝试</div>
                     <div>• 系统会自动重试，请耐心等待</div>
                   </>
@@ -258,19 +258,19 @@ export default function ContentSetupPage() {
                   </>
                 ) : generationStatus.includes('密钥无效') ? (
                   <>
-                    <div>• OpenAI API密钥无效或已过期</div>
+                    <div>• 通义千问API密钥无效或已过期</div>
                     <div>• 请检查后台API密钥配置</div>
                     <div>• 确保API密钥有效且有足够权限</div>
                   </>
                 ) : generationStatus.includes('配额') ? (
                   <>
-                    <div>• OpenAI API配额已用完</div>
-                    <div>• 请检查您的OpenAI账户余额</div>
+                                    <div>• 通义千问API配额已用完</div>
+                <div>• 请检查您的通义千问账户余额</div>
                     <div>• 充值后即可继续使用</div>
                   </>
                 ) : (
                   <>
-                    <div>• 请检查您的OpenAI API密钥配置和网络连接</div>
+                    <div>• 请检查您的通义千问API密钥配置和网络连接</div>
                     <div>• 确保服务器正常运行</div>
                     <div>• 如问题持续，请联系技术支持</div>
                   </>
@@ -280,7 +280,7 @@ export default function ContentSetupPage() {
           )}
 
           <div className="mt-6 text-xs text-gray-400">
-            ⚡ 使用 GPT-4 + {contentData.imageEngine === 'liblibai' ? 'LiblibAI Kontext' : 'DALL-E 3'} 技术驱动
+            ⚡ 使用 通义千问 + {contentData.imageEngine === 'liblibai' ? 'LiblibAI Kontext' : 'DALL-E 3'} 技术驱动
           </div>
         </div>
       </div>
@@ -358,7 +358,7 @@ export default function ContentSetupPage() {
                     <span className="ml-2 px-2 py-1 bg-purple-100 text-purple-800 text-xs rounded-full">高质量</span>
                   </Label>
                   <p className="text-sm text-gray-500 mt-1">
-                    OpenAI的顶级图像生成模型，画质精美，细节丰富
+                    OpenAI的图像生成模型，画质精美，细节丰富
                   </p>
                 </div>
               </div>

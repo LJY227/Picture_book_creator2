@@ -319,11 +319,85 @@ app.post('/api/openai/images', async (req, res) => {
   }
 });
 
-// 🔗 双账户API状态检查
+// 🤖 通义千问API代理
+app.post('/api/qwen/chat', async (req, res) => {
+  try {
+    const { model = 'qwen-turbo', input, parameters } = req.body;
+    
+    if (!input || !input.messages) {
+      return res.status(400).json({ error: '缺少input.messages参数' });
+    }
+    
+    // 检查API密钥配置
+    if (!process.env.VITE_QWEN_API_KEY) {
+      return res.status(500).json({ 
+        error: '通义千问API密钥未配置',
+        details: '请在环境变量中配置 VITE_QWEN_API_KEY'
+      });
+    }
+    
+    console.log(`🤖 调用通义千问API: ${model}`);
+    
+    const fetch = (await import('node-fetch')).default;
+    
+    // 构建请求体
+    const requestBody = {
+      model: model,
+      input: input,
+      parameters: {
+        temperature: parameters?.temperature || 0.7,
+        max_tokens: parameters?.max_tokens || 1500,
+        top_p: parameters?.top_p || 0.8,
+        top_k: parameters?.top_k || 50,
+        ...parameters
+      }
+    };
+    
+    // 调用通义千问API
+    const response = await fetch('https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.VITE_QWEN_API_KEY}`
+      },
+      body: JSON.stringify(requestBody)
+    });
+    
+    const result = await response.json();
+    
+    if (!response.ok) {
+      console.error(`❌ 通义千问API调用失败:`, result);
+      
+      // 处理特定错误
+      if (response.status === 429) {
+        result.suggestion = '通义千问API调用频率过高，请稍后重试';
+      } else if (response.status === 401) {
+        result.suggestion = '通义千问API密钥无效，请检查配置';
+      } else if (response.status === 400) {
+        result.suggestion = '请求参数错误，请检查输入格式';
+      }
+      
+      return res.status(response.status).json(result);
+    }
+    
+    console.log(`✅ 通义千问API调用成功 (${model})`);
+    res.json(result);
+    
+  } catch (error) {
+    console.error('通义千问API代理错误:', error);
+    res.status(500).json({ 
+      error: error.message,
+      details: '通义千问服务器内部错误，请稍后重试'
+    });
+  }
+});
+
+// 🔗 API状态检查
 app.get('/api/status', (req, res) => {
   const hasPrimaryKey = !!process.env.VITE_OPENAI_API_KEY;
   const hasSecondaryKey = !!process.env.OPENAI_API_KEY2;
   const hasLiblibConfig = !!(LIBLIB_CONFIG.accessKey && LIBLIB_CONFIG.secretKey);
+  const hasQwenKey = !!process.env.VITE_QWEN_API_KEY;
   
   // 双账户配置状态
   const dualAccountStatus = {
@@ -365,6 +439,12 @@ app.get('/api/status', (req, res) => {
             '单账户运行中' : 
             'OpenAI API密钥未配置'
       },
+      qwen: {
+        configured: hasQwenKey,
+        env: 'VITE_QWEN_API_KEY',
+        models: ['qwen-turbo', 'qwen-plus', 'qwen-max'],
+        message: hasQwenKey ? '通义千问API已配置' : '通义千问API密钥未配置'
+      },
       liblib: {
         configured: hasLiblibConfig,
         message: hasLiblibConfig ? 'LiblibAI API已配置' : 'LiblibAI API密钥未配置'
@@ -373,9 +453,10 @@ app.get('/api/status', (req, res) => {
     endpoints: [
       'POST /api/openai/chat - 双账户OpenAI聊天API',
       'POST /api/openai/images - DALL-E图像生成',
+      'POST /api/qwen/chat - 通义千问聊天API',
       'POST /api/liblib/text2img - LiblibAI文生图',
       'POST /api/liblib/img2img - LiblibAI图生图',
-      'GET /api/status - 双账户服务状态检查'
+      'GET /api/status - 服务状态检查'
     ]
   });
 });

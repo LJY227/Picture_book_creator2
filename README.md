@@ -1,6 +1,6 @@
 # 🎨 AI图画书创作器
 
-专为自闭症儿童设计的智能绘本创作工具，集成了OpenAI GPT-4和LiblibAI图像生成能力。
+专为自闭症儿童设计的智能绘本创作工具，集成了通义千问AI和LiblibAI图像生成能力。
 
 ## ✨ 功能特点
 
@@ -15,9 +15,16 @@
 
 ### 1. 获取API密钥
 
-#### OpenAI API密钥
-- 访问 [OpenAI Platform](https://platform.openai.com/api-keys)
+#### 通义千问API密钥（推荐）
+- 访问 [阿里云DashScope](https://dashscope.aliyun.com/)
+- 注册并开通通义千问服务
+- 获取API-KEY并配置到环境变量中
+- 支持qwen-turbo、qwen-plus、qwen-max模型
+
+#### OpenAI API密钥（可选）
+- 访问 [OpenAI Platform](https://platform.openai.com/api-keys)  
 - 创建新的API密钥
+- 注：系统已切换到通义千问，OpenAI为备选方案
 
 #### LiblibAI API密钥
 - 访问 [LiblibAI官网](https://www.liblibai.com/)
@@ -30,7 +37,8 @@
 cp env.template .env
 
 # 编辑 .env 文件，填写你的API密钥
-# VITE_OPENAI_API_KEY=sk-your-key-here
+# VITE_QWEN_API_KEY=sk-your-qwen-key-here
+# VITE_OPENAI_API_KEY=sk-your-openai-key-here (可选)
 # VITE_LIBLIB_ACCESS_KEY=your-access-key
 # VITE_LIBLIB_SECRET_KEY=your-secret-key
 ```
@@ -46,6 +54,13 @@ npm start
 ```
 
 访问 `http://localhost:3000` 开始使用！
+
+### 4. 验证配置
+
+确保环境变量配置正确：
+- 通义千问API密钥：必需，用于故事生成和角色优化
+- LiblibAI API密钥：必需，用于图像生成
+- OpenAI API密钥：可选，作为备选方案
 
 ## 🌐 部署为公开网站
 
@@ -82,7 +97,7 @@ npm run deploy:prepare
 
 - **前端**: React + Vite + Tailwind CSS
 - **后端**: Node.js + Express
-- **AI服务**: OpenAI GPT-4 + LiblibAI
+- **AI服务**: 通义千问 + LiblibAI
 - **UI组件**: Radix UI + Lucide React
 - **部署**: Vercel (前端) + Railway (后端)
 
@@ -136,9 +151,9 @@ npm start
 - 总计: ~$5/月
 
 ### API调用成本
-- OpenAI: ~$0.002/1K tokens
+- 通义千问: ~0.002-0.02元/1K tokens（根据模型不同）
 - LiblibAI: ~0.5-1元/张图片
-- 估算: 小规模使用 $10-20/月
+- 估算: 小规模使用 20-50元/月
 
 ## 🔒 安全提醒
 
