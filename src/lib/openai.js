@@ -581,20 +581,21 @@ const rateLimiter = new PayloadRateLimiter();
  * @returns {Promise<Object>} API响应
  */
 async function callOpenAIChat(options, taskType = 'FAST_PROCESSING', retryCount = 0, maxRetries = 8) {
-  // 🔗 智能双账户选择
-  const selectedAccount = dualAccountBalancer.selectAccount(taskType, options.model);
-  const accountConfig = selectedAccount.id === 'primary' ? 
-    DUAL_ACCOUNT_CONFIG.PRIMARY : DUAL_ACCOUNT_CONFIG.SECONDARY;
-  
-  // 🛡️ 强制等待机制 - 确保不会过于频繁调用
-  const waitTime = dualAccountBalancer.getWaitTimeRecommendation(selectedAccount.id);
-  if (waitTime > 0) {
-    console.log(`⏰ ${accountConfig.name}需要等待 ${waitTime/1000}秒 以避免频率限制...`);
-    await new Promise(resolve => setTimeout(resolve, waitTime));
-  }
-  
-  // 使用智能请求队列（双账户优化）
-  return rateLimiter.addRequest(async () => {
+  // 🚀 使用全局序列化器确保严格串行执行 - 彻底消除并发调用
+  return globalAPISerializer.serializeOpenAICall(async () => {
+    // 🔗 智能双账户选择
+    const selectedAccount = dualAccountBalancer.selectAccount(taskType, options.model);
+    const accountConfig = selectedAccount.id === 'primary' ? 
+      DUAL_ACCOUNT_CONFIG.PRIMARY : DUAL_ACCOUNT_CONFIG.SECONDARY;
+    
+    console.log(`🔒 OpenAI串行执行: ${taskType} 使用 ${accountConfig.name}`);
+    
+    // 额外的双账户等待机制
+    const waitTime = dualAccountBalancer.getWaitTimeRecommendation(selectedAccount.id);
+    if (waitTime > 0) {
+      console.log(`⏰ ${accountConfig.name}额外等待 ${waitTime/1000}秒...`);
+      await new Promise(resolve => setTimeout(resolve, waitTime));
+    }
     try {
       // 🚀 超强重试策略：针对双账户系统的频率限制优化
       if (retryCount > 0) {
@@ -651,28 +652,32 @@ async function callOpenAIChat(options, taskType = 'FAST_PROCESSING', retryCount 
             
             return callOpenAIChat(options, taskType, retryCount + 1, maxRetries);
           } else {
-            // 显示双账户状态
+            // 显示双账户和串行化状态
             const loadStatus = dualAccountBalancer.getLoadStatus();
-            throw new Error(`双账户系统频率限制：${options.model || 'unknown'}模型经过${maxRetries}次重试仍失败。
+            const serializerStatus = globalAPISerializer.getStatus();
+            
+            throw new Error(`双账户串行系统频率限制：${options.model || 'unknown'}模型经过${maxRetries}次重试仍失败。
 
-🔍 双账户详细状态：
-• 主账户(付费): ${loadStatus.primary.calls}次调用, 限频状态: ${loadStatus.primary.rateLimited ? '是' : '否'}
-• 副账户(免费): ${loadStatus.secondary.calls}次调用, 限频状态: ${loadStatus.secondary.rateLimited ? '是' : '否'}
+🔍 串行化系统详细状态：
+• OpenAI队列: ${serializerStatus.openai.queueLength}个任务等待中
+• 串行间隔: ${serializerStatus.openai.minInterval/1000}秒
+• 主账户: ${loadStatus.primary.calls}次调用, 限频: ${loadStatus.primary.rateLimited ? '是' : '否'}
+• 副账户: ${loadStatus.secondary.calls}次调用, 限频: ${loadStatus.secondary.rateLimited ? '是' : '否'}
 • 当前模型：${options.model || 'unknown'}
-• 总重试时间：约${Math.round((10+30+60+120+240+480+600+900)/60)}分钟
+• 总重试时间：约${Math.round((15+45+90+180+360+600+900+1200)/60)}分钟
 
-💡 双账户解决方案：
-1. 🕐 等待5-10分钟后重试（双账户恢复更快）
-2. 🔄 检查是否有其他标签页在同时生成
-3. 📊 免费账户限制：3 RPM，付费账户：GPT-4 (500 RPM), GPT-4o (5000 RPM)
-4. ⏰ 错开使用高峰时段
+💡 串行化解决方案：
+1. 🕐 等待10-15分钟后重试（串行系统需要更多时间）
+2. 🔒 所有API调用已强制串行化，避免并发冲突
+3. ⏱️ 当前OpenAI最小间隔: ${serializerStatus.openai.minInterval/1000}秒
+4. 📊 免费账户: 3 RPM，付费账户: GPT-4 (500 RPM), GPT-4o (5000 RPM)
 
-🚀 双账户优势：
-• 负载分散，有效避免单账户频率限制
-• 自动故障转移，提高系统可用性
-• 智能任务分配，优化资源利用
+🚀 系统优化：
+• 全局API调用序列化，彻底消除并发冲突
+• 双账户负载均衡，智能故障转移
+• 超保守重试策略，最大化成功率
 
-系统将在下次重试时继续优化双账户策略。`);
+⚠️ 如果仍然失败，说明两个账户都达到了限制，请等待更长时间。`);
           }
         }
         
@@ -1690,12 +1695,17 @@ export async function diagnoseDualAccountSystem() {
     
     // 5. 显示诊断信息
     const diagnostics = dualAccountBalancer.getDiagnostics();
-    console.log('🔧 详细诊断信息:', diagnostics);
+    console.log('🔧 双账户详细诊断信息:', diagnostics);
+    
+    // 6. 显示串行化系统状态
+    const serializerStatus = globalAPISerializer.getStatus();
+    console.log('🔒 串行化系统状态:', serializerStatus);
     
     return {
       backendStatus: statusData,
       balancerStatus: balancerStatus,
       diagnostics: diagnostics,
+      serializerStatus: serializerStatus,
       timestamp: new Date().toISOString()
     };
     
@@ -1743,3 +1753,158 @@ export async function forceTestSecondaryAccount() {
     return { success: false, error: error.message };
   }
 }
+
+// 🚀 全局API调用序列化器 - 彻底消除并发调用
+class GlobalAPISerializer {
+  constructor() {
+    this.openaiQueue = [];
+    this.liblibQueue = [];
+    this.isProcessingOpenAI = false;
+    this.isProcessingLiblib = false;
+    this.openaiMinInterval = 12000; // OpenAI最小间隔12秒
+    this.liblibMinInterval = 3000;   // LiblibAI最小间隔3秒
+    this.lastOpenAICall = 0;
+    this.lastLiblibCall = 0;
+  }
+  
+  // 序列化OpenAI API调用
+  async serializeOpenAICall(requestFn, taskType = 'UNKNOWN') {
+    return new Promise((resolve, reject) => {
+      this.openaiQueue.push({ 
+        requestFn, 
+        resolve, 
+        reject, 
+        taskType,
+        timestamp: Date.now()
+      });
+      this.processOpenAIQueue();
+    });
+  }
+  
+  // 序列化LiblibAI API调用
+  async serializeLiblibCall(requestFn, taskType = 'IMAGE_GEN') {
+    return new Promise((resolve, reject) => {
+      this.liblibQueue.push({ 
+        requestFn, 
+        resolve, 
+        reject, 
+        taskType,
+        timestamp: Date.now()
+      });
+      this.processLiblibQueue();
+    });
+  }
+  
+  // 处理OpenAI队列
+  async processOpenAIQueue() {
+    if (this.isProcessingOpenAI || this.openaiQueue.length === 0) return;
+    
+    this.isProcessingOpenAI = true;
+    
+    while (this.openaiQueue.length > 0) {
+      const { requestFn, resolve, reject, taskType } = this.openaiQueue.shift();
+      
+      try {
+        // 🛡️ 强制等待时间间隔
+        const now = Date.now();
+        const timeSinceLastCall = now - this.lastOpenAICall;
+        const requiredWait = this.openaiMinInterval;
+        
+        if (timeSinceLastCall < requiredWait) {
+          const waitTime = requiredWait - timeSinceLastCall;
+          console.log(`🔒 OpenAI串行队列强制等待 ${waitTime/1000}秒 (任务: ${taskType})`);
+          await new Promise(r => setTimeout(r, waitTime));
+        }
+        
+        console.log(`🎯 执行OpenAI串行调用: ${taskType} (队列剩余: ${this.openaiQueue.length})`);
+        
+        const result = await requestFn();
+        this.lastOpenAICall = Date.now();
+        
+        console.log(`✅ OpenAI串行调用完成: ${taskType}`);
+        resolve(result);
+        
+        // 额外安全间隔
+        console.log(`⏰ OpenAI调用间隔安全等待 3秒...`);
+        await new Promise(r => setTimeout(r, 3000));
+        
+      } catch (error) {
+        console.error(`❌ OpenAI串行调用失败: ${taskType}`, error);
+        
+        // 如果是频率限制错误，增加间隔
+        if (error.message && error.message.includes('429')) {
+          this.openaiMinInterval = Math.min(this.openaiMinInterval * 1.5, 30000);
+          console.log(`🚨 检测到频率限制，增加OpenAI间隔到 ${this.openaiMinInterval/1000}秒`);
+        }
+        
+        reject(error);
+      }
+    }
+    
+    this.isProcessingOpenAI = false;
+  }
+  
+  // 处理LiblibAI队列
+  async processLiblibQueue() {
+    if (this.isProcessingLiblib || this.liblibQueue.length === 0) return;
+    
+    this.isProcessingLiblib = true;
+    
+    while (this.liblibQueue.length > 0) {
+      const { requestFn, resolve, reject, taskType } = this.liblibQueue.shift();
+      
+      try {
+        // LiblibAI间隔较短，但仍需避免过于频繁
+        const now = Date.now();
+        const timeSinceLastCall = now - this.lastLiblibCall;
+        const requiredWait = this.liblibMinInterval;
+        
+        if (timeSinceLastCall < requiredWait) {
+          const waitTime = requiredWait - timeSinceLastCall;
+          console.log(`🔒 LiblibAI串行队列等待 ${waitTime/1000}秒 (任务: ${taskType})`);
+          await new Promise(r => setTimeout(r, waitTime));
+        }
+        
+        console.log(`🎨 执行LiblibAI串行调用: ${taskType} (队列剩余: ${this.liblibQueue.length})`);
+        
+        const result = await requestFn();
+        this.lastLiblibCall = Date.now();
+        
+        console.log(`✅ LiblibAI串行调用完成: ${taskType}`);
+        resolve(result);
+        
+        // LiblibAI较小的间隔
+        await new Promise(r => setTimeout(r, 1000));
+        
+      } catch (error) {
+        console.error(`❌ LiblibAI串行调用失败: ${taskType}`, error);
+        reject(error);
+      }
+    }
+    
+    this.isProcessingLiblib = false;
+  }
+  
+  // 获取队列状态
+  getStatus() {
+    return {
+      openai: {
+        queueLength: this.openaiQueue.length,
+        processing: this.isProcessingOpenAI,
+        minInterval: this.openaiMinInterval,
+        lastCall: this.lastOpenAICall,
+        nextAvailable: this.lastOpenAICall + this.openaiMinInterval
+      },
+      liblib: {
+        queueLength: this.liblibQueue.length,
+        processing: this.isProcessingLiblib,
+        minInterval: this.liblibMinInterval,
+        lastCall: this.lastLiblibCall,
+        nextAvailable: this.lastLiblibCall + this.liblibMinInterval
+      }
+    };
+  }
+}
+
+// 创建全局序列化器
+const globalAPISerializer = new GlobalAPISerializer();
