@@ -195,27 +195,97 @@ app.post('/api/liblib/query/:generateUuid', async (req, res) => {
   }
 });
 
-// OpenAI聊天API代理
+// 🔗 双账户OpenAI聊天API代理
 app.post('/api/openai/chat', async (req, res) => {
   try {
-    const { messages, model = 'gpt-4o', temperature = 0.7, max_tokens = 150 } = req.body;
+    const { 
+      messages, 
+      model = 'gpt-4o', 
+      temperature = 0.7, 
+      max_tokens = 150,
+      accountId = 'primary',  // 新增：账户选择
+      accountType = 'paid'    // 新增：账户类型
+    } = req.body;
+    
     if (!messages) return res.status(400).json({ error: '缺少messages参数' });
-    if (!process.env.VITE_OPENAI_API_KEY)
-      return res.status(500).json({ error: 'OpenAI API密钥未配置' });
+    
+    // 🔗 双账户API key配置
+    const API_KEYS = {
+      primary: process.env.VITE_OPENAI_API_KEY,        // 主账户（付费）
+      secondary: process.env.OPENAI_API_KEY2           // 副账户（免费）
+    };
+    
+    // 选择API key
+    let selectedApiKey = API_KEYS[accountId];
+    if (!selectedApiKey) {
+      // 如果指定的账户没有配置，使用主账户
+      selectedApiKey = API_KEYS.primary;
+      console.log(`⚠️ 账户${accountId}未配置，使用主账户`);
+    }
+    
+    if (!selectedApiKey) {
+      return res.status(500).json({ 
+        error: 'OpenAI API密钥未配置',
+        details: '请在环境变量中配置 VITE_OPENAI_API_KEY 或 OPENAI_API_KEY2',
+        accountId: accountId,
+        availableAccounts: {
+          primary: !!API_KEYS.primary,
+          secondary: !!API_KEYS.secondary
+        }
+      });
+    }
+    
+    // 记录API调用
+    const accountName = accountId === 'primary' ? '主账户(付费)' : '副账户(免费)';
+    console.log(`🔗 使用${accountName}调用OpenAI API: ${model}`);
+    
     const fetch = (await import('node-fetch')).default;
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${process.env.VITE_OPENAI_API_KEY}`
+        'Authorization': `Bearer ${selectedApiKey}`
       },
       body: JSON.stringify({ model, messages, temperature, max_tokens })
     });
+    
     const result = await response.json();
-    if (!response.ok) return res.status(response.status).json(result);
+    
+    // 增强错误信息
+    if (!response.ok) {
+      console.error(`❌ ${accountName}API调用失败:`, result);
+      
+      // 为429错误添加特殊处理
+      if (response.status === 429) {
+        result.accountInfo = {
+          accountId: accountId,
+          accountName: accountName,
+          accountType: accountType,
+          suggestion: accountId === 'primary' ? 
+            '主账户被限频，建议切换到副账户' : 
+            '副账户被限频，建议切换到主账户'
+        };
+      }
+      
+      return res.status(response.status).json(result);
+    }
+    
+    console.log(`✅ ${accountName}API调用成功`);
+    
+    // 添加账户信息到响应
+    result.accountInfo = {
+      accountId: accountId,
+      accountName: accountName,
+      accountType: accountType
+    };
+    
     res.json(result);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('OpenAI API代理错误:', error);
+    res.status(500).json({ 
+      error: error.message,
+      details: '服务器内部错误，请稍后重试'
+    });
   }
 });
 
@@ -249,17 +319,51 @@ app.post('/api/openai/images', async (req, res) => {
   }
 });
 
-// API状态检查
+// 🔗 双账户API状态检查
 app.get('/api/status', (req, res) => {
-  const hasOpenAIKey = !!process.env.VITE_OPENAI_API_KEY;
+  const hasPrimaryKey = !!process.env.VITE_OPENAI_API_KEY;
+  const hasSecondaryKey = !!process.env.OPENAI_API_KEY2;
   const hasLiblibConfig = !!(LIBLIB_CONFIG.accessKey && LIBLIB_CONFIG.secretKey);
+  
+  // 双账户配置状态
+  const dualAccountStatus = {
+    primary: {
+      configured: hasPrimaryKey,
+      name: '主账户(付费)',
+      env: 'VITE_OPENAI_API_KEY',
+      message: hasPrimaryKey ? '主账户已配置' : '主账户密钥未配置'
+    },
+    secondary: {
+      configured: hasSecondaryKey,
+      name: '副账户(免费)',
+      env: 'OPENAI_API_KEY2',
+      message: hasSecondaryKey ? '副账户已配置' : '副账户密钥未配置'
+    }
+  };
+  
+  const totalConfiguredAccounts = (hasPrimaryKey ? 1 : 0) + (hasSecondaryKey ? 1 : 0);
+  
   res.json({
     status: 'running',
     timestamp: new Date().toISOString(),
+    dualAccountSystem: {
+      enabled: true,
+      totalAccounts: 2,
+      configuredAccounts: totalConfiguredAccounts,
+      accounts: dualAccountStatus,
+      loadBalancing: totalConfiguredAccounts > 1 ? 'active' : 'single-account'
+    },
     services: {
       openai: {
-        configured: hasOpenAIKey,
-        message: hasOpenAIKey ? 'OpenAI API已配置' : 'OpenAI API密钥未配置'
+        configured: hasPrimaryKey || hasSecondaryKey,
+        dualAccount: true,
+        primaryAccount: dualAccountStatus.primary,
+        secondaryAccount: dualAccountStatus.secondary,
+        message: totalConfiguredAccounts === 2 ? 
+          '双账户负载均衡已启用' : 
+          totalConfiguredAccounts === 1 ? 
+            '单账户运行中' : 
+            'OpenAI API密钥未配置'
       },
       liblib: {
         configured: hasLiblibConfig,
@@ -267,11 +371,11 @@ app.get('/api/status', (req, res) => {
       }
     },
     endpoints: [
-      'POST /api/openai/chat - OpenAI聊天API',
+      'POST /api/openai/chat - 双账户OpenAI聊天API',
       'POST /api/openai/images - DALL-E图像生成',
       'POST /api/liblib/text2img - LiblibAI文生图',
       'POST /api/liblib/img2img - LiblibAI图生图',
-      'GET /api/status - 服务状态检查'
+      'GET /api/status - 双账户服务状态检查'
     ]
   });
 });

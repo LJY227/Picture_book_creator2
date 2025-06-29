@@ -10,6 +10,287 @@ import {
 // 获取后端API地址 - 使用相对路径
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 
+// 🔗 双账户负载均衡系统 - 解决频率限制问题
+const DUAL_ACCOUNT_CONFIG = {
+  // 主账户（原有的付费账户）
+  PRIMARY: {
+    id: 'primary',
+    name: '主账户(付费)',
+    priority: 1,
+    limits: {
+      'gpt-4': 500,     // 500 RPM
+      'gpt-4o': 5000,   // 5000 RPM
+      'gpt-3.5-turbo': 3500  // 3500 RPM
+    }
+  },
+  
+  // 副账户（新的免费账户）
+  SECONDARY: {
+    id: 'secondary',
+    name: '副账户(免费)',
+    priority: 2,
+    limits: {
+      'gpt-4': 3,       // 3 RPM (免费限制)
+      'gpt-4o': 3,      // 3 RPM (免费限制)
+      'gpt-3.5-turbo': 3  // 3 RPM (免费限制)
+    }
+  },
+  
+  // 任务分配策略
+  TASK_DISTRIBUTION: {
+    // 故事生成：使用主账户（需要高质量）
+    STORY_GENERATION: 'primary',
+    
+    // 角色优化：轮流使用（分散负载）
+    CHARACTER_OPTIMIZATION: 'rotate',
+    
+    // 翻译任务：优先副账户（任务简单）
+    TRANSLATION: 'secondary',
+    
+    // 快速处理：优先副账户
+    FAST_PROCESSING: 'secondary',
+    
+    // 高质量创作：主账户
+    HIGH_QUALITY: 'primary'
+  }
+};
+
+// 🎯 智能双账户负载均衡器
+class DualAccountBalancer {
+  constructor() {
+    this.accounts = {
+      primary: {
+        id: 'primary',
+        callCount: 0,
+        lastResetTime: Date.now(),
+        isRateLimited: false,
+        rateLimitUntil: 0,
+        modelUsage: new Map() // 追踪每个模型的使用
+      },
+      secondary: {
+        id: 'secondary',
+        callCount: 0,
+        lastResetTime: Date.now(),
+        isRateLimited: false,
+        rateLimitUntil: 0,
+        modelUsage: new Map()
+      }
+    };
+    
+    this.rotationIndex = 0; // 用于轮流分配
+  }
+  
+  // 选择最佳账户
+  selectAccount(taskType, modelName) {
+    const strategy = DUAL_ACCOUNT_CONFIG.TASK_DISTRIBUTION[taskType];
+    const now = Date.now();
+    
+    // 检查账户是否从频率限制中恢复
+    this.checkRateLimitRecovery();
+    
+    let selectedAccount = null;
+    
+    switch (strategy) {
+      case 'primary':
+        selectedAccount = this.accounts.primary.isRateLimited ? 
+          this.accounts.secondary : this.accounts.primary;
+        break;
+        
+      case 'secondary':
+        selectedAccount = this.accounts.secondary.isRateLimited ? 
+          this.accounts.primary : this.accounts.secondary;
+        break;
+        
+      case 'rotate':
+        // 轮流使用，但跳过被限频的账户
+        const accountIds = ['primary', 'secondary'];
+        for (let i = 0; i < accountIds.length; i++) {
+          const accountId = accountIds[(this.rotationIndex + i) % accountIds.length];
+          if (!this.accounts[accountId].isRateLimited) {
+            selectedAccount = this.accounts[accountId];
+            this.rotationIndex = (this.rotationIndex + 1) % accountIds.length;
+            break;
+          }
+        }
+        break;
+        
+      default:
+        // 默认选择可用的账户
+        selectedAccount = !this.accounts.primary.isRateLimited ? 
+          this.accounts.primary : this.accounts.secondary;
+    }
+    
+    // 如果所有账户都被限频，选择恢复时间最早的
+    if (!selectedAccount || selectedAccount.isRateLimited) {
+      selectedAccount = this.accounts.primary.rateLimitUntil < this.accounts.secondary.rateLimitUntil ?
+        this.accounts.primary : this.accounts.secondary;
+    }
+    
+    const accountConfig = selectedAccount.id === 'primary' ? 
+      DUAL_ACCOUNT_CONFIG.PRIMARY : DUAL_ACCOUNT_CONFIG.SECONDARY;
+    
+    console.log(`🎯 任务"${taskType}"选择${accountConfig.name} (${selectedAccount.id})`);
+    console.log(`📊 账户状态: 主账户=${this.accounts.primary.callCount}次调用, 副账户=${this.accounts.secondary.callCount}次调用`);
+    
+    return selectedAccount;
+  }
+  
+  // 记录API调用
+  recordAPICall(accountId, modelName, success = true) {
+    const account = this.accounts[accountId];
+    if (!account) return;
+    
+    account.callCount++;
+    
+    // 记录模型使用情况
+    const modelCount = account.modelUsage.get(modelName) || 0;
+    account.modelUsage.set(modelName, modelCount + 1);
+    
+    if (success) {
+      console.log(`✅ ${accountId}账户调用成功: ${modelName} (总计: ${account.callCount}次)`);
+    } else {
+      console.log(`❌ ${accountId}账户调用失败: ${modelName}`);
+    }
+  }
+  
+  // 记录账户被限频
+  recordRateLimit(accountId, modelName, rateLimitDuration = 60000) {
+    const account = this.accounts[accountId];
+    if (!account) return;
+    
+    account.isRateLimited = true;
+    account.rateLimitUntil = Date.now() + rateLimitDuration;
+    
+    const accountConfig = accountId === 'primary' ? 
+      DUAL_ACCOUNT_CONFIG.PRIMARY : DUAL_ACCOUNT_CONFIG.SECONDARY;
+    
+    console.log(`⚠️ ${accountConfig.name}被限频: ${modelName}，${rateLimitDuration/1000}秒后恢复`);
+    console.log(`🔄 自动切换到${accountId === 'primary' ? '副账户' : '主账户'}`);
+  }
+  
+  // 检查限频恢复
+  checkRateLimitRecovery() {
+    const now = Date.now();
+    
+    for (const [accountId, account] of Object.entries(this.accounts)) {
+      if (account.isRateLimited && now > account.rateLimitUntil) {
+        account.isRateLimited = false;
+        account.rateLimitUntil = 0;
+        
+        const accountConfig = accountId === 'primary' ? 
+          DUAL_ACCOUNT_CONFIG.PRIMARY : DUAL_ACCOUNT_CONFIG.SECONDARY;
+        
+        console.log(`🎉 ${accountConfig.name}已从频率限制中恢复！`);
+      }
+    }
+  }
+  
+  // 获取负载状态
+  getLoadStatus() {
+    return {
+      primary: {
+        calls: this.accounts.primary.callCount,
+        rateLimited: this.accounts.primary.isRateLimited,
+        models: Object.fromEntries(this.accounts.primary.modelUsage)
+      },
+      secondary: {
+        calls: this.accounts.secondary.callCount,
+        rateLimited: this.accounts.secondary.isRateLimited,
+        models: Object.fromEntries(this.accounts.secondary.modelUsage)
+      }
+    };
+  }
+  
+  // 重置计数器（每小时重置）
+  resetCounters() {
+    const now = Date.now();
+    const oneHour = 60 * 60 * 1000;
+    
+    for (const account of Object.values(this.accounts)) {
+      if (now - account.lastResetTime > oneHour) {
+        account.callCount = 0;
+        account.modelUsage.clear();
+        account.lastResetTime = now;
+        console.log(`🔄 重置账户调用计数器`);
+      }
+    }
+  }
+}
+
+// 创建全局双账户负载均衡器
+const dualAccountBalancer = new DualAccountBalancer();
+
+// 🎯 本地化处理策略 - 大幅减少API调用依赖
+const LOCAL_PROCESSING = {
+  // 缓存机制
+  cache: new Map(),
+  
+  // 本地角色描述优化规则
+  CHARACTER_RULES: {
+    // 基础特征补充
+    age_features: {
+      '3-5': ['圆脸', '大眼睛', '可爱', '天真'],
+      '6-8': ['活泼', '好奇', '明亮眼神', '灿烂笑容'],
+      '9-12': ['聪明', '自信', '友善', '阳光']
+    },
+    
+    // 服装建议
+    clothing: ['T恤', '毛衣', '连衣裙', '牛仔裤', '运动服', '校服'],
+    
+    // 发型建议
+    hairstyles: ['短发', '长发', '马尾辫', '双马尾', '卷发', '直发'],
+    
+    // 表情建议
+    expressions: ['微笑', '开心', '好奇', '专注', '友善', '活泼']
+  },
+  
+  // 本地翻译词典
+  TRANSLATION_DICT: {
+    // 常用儿童描述词汇
+    '男孩': 'boy', '女孩': 'girl', '孩子': 'child',
+    '可爱': 'cute', '活泼': 'lively', '聪明': 'smart',
+    '短发': 'short hair', '长发': 'long hair', '卷发': 'curly hair',
+    '大眼睛': 'big eyes', '小脸': 'small face', '圆脸': 'round face',
+    '微笑': 'smiling', '开心': 'happy', '友善': 'friendly',
+    '蓝色': 'blue', '红色': 'red', '绿色': 'green', '黄色': 'yellow',
+    '毛衣': 'sweater', 'T恤': 't-shirt', '连衣裙': 'dress',
+    '眼镜': 'glasses', '帽子': 'hat', '书包': 'backpack'
+  },
+  
+  // 预设故事模板
+  STORY_TEMPLATES: {
+    '学会分享与合作': {
+      title: '{name}学会分享',
+      pages: [
+        { title: '发现问题', content: '{name}看到朋友没有玩具。{name}想要帮助。', scene: 'character with toys, friend looking sad' },
+        { title: '思考解决', content: '{name}想起妈妈说过要分享。{name}决定分享玩具。', scene: 'character thinking, lightbulb moment' },
+        { title: '行动实践', content: '{name}把玩具给朋友。朋友很开心。', scene: 'character sharing toys with friend' },
+        { title: '收获快乐', content: '{name}和朋友一起玩。分享让人快乐。', scene: 'character and friend playing together happily' }
+      ]
+    },
+    
+    '培养勇敢和自信': {
+      title: '{name}变勇敢',
+      pages: [
+        { title: '遇到挑战', content: '{name}遇到困难。{name}有点害怕。', scene: 'character facing a challenge, looking worried' },
+        { title: '寻找勇气', content: '{name}深呼吸。{name}告诉自己要勇敢。', scene: 'character taking deep breath, self-encouraging' },
+        { title: '勇敢尝试', content: '{name}鼓起勇气尝试。{name}做得很好。', scene: 'character bravely taking action' },
+        { title: '获得自信', content: '{name}成功了。{name}变得更自信了。', scene: 'character feeling proud and confident' }
+      ]
+    },
+    
+    '理解友谊的重要性': {
+      title: '{name}的好朋友',
+      pages: [
+        { title: '认识朋友', content: '{name}遇到新朋友。{name}主动打招呼。', scene: 'character meeting new friend, waving hello' },
+        { title: '一起玩耍', content: '{name}和朋友一起玩游戏。他们玩得很开心。', scene: 'character playing games with friend' },
+        { title: '互相帮助', content: '朋友需要帮助。{name}马上过去帮忙。', scene: 'character helping friend in need' },
+        { title: '珍惜友谊', content: '{name}明白了友谊很珍贵。{name}要好好珍惜。', scene: 'character and friend together, very happy' }
+      ]
+    }
+  }
+};
+
 // 🎯 优化的OpenAI模型策略配置（专注GPT-4o和GPT-4）
 const MODEL_STRATEGY = {
   // 不同任务使用不同模型以分散负载
@@ -202,31 +483,47 @@ class PayloadRateLimiter {
 const rateLimiter = new PayloadRateLimiter();
 
 /**
- * 通过后端代理调用OpenAI Chat API（使用智能队列）
+ * 通过后端代理调用OpenAI Chat API（支持双账户负载均衡）
  * @param {Object} options - 调用选项
+ * @param {string} taskType - 任务类型，用于账户选择
+ * @param {number} retryCount - 重试次数
+ * @param {number} maxRetries - 最大重试次数
  * @returns {Promise<Object>} API响应
  */
-async function callOpenAIChat(options, retryCount = 0, maxRetries = 8) {
-  // 使用智能请求队列（付费账户优化）
+async function callOpenAIChat(options, taskType = 'FAST_PROCESSING', retryCount = 0, maxRetries = 8) {
+  // 🔗 智能双账户选择
+  const selectedAccount = dualAccountBalancer.selectAccount(taskType, options.model);
+  const accountConfig = selectedAccount.id === 'primary' ? 
+    DUAL_ACCOUNT_CONFIG.PRIMARY : DUAL_ACCOUNT_CONFIG.SECONDARY;
+  
+  // 使用智能请求队列（双账户优化）
   return rateLimiter.addRequest(async () => {
     try {
-      // 🚀 超强重试策略：针对GPT-4和GPT-4o的频率限制优化
+      // 🚀 超强重试策略：针对双账户系统的频率限制优化
       if (retryCount > 0) {
-        // 更保守的重试延迟：10, 30, 60, 120, 240, 480, 600, 900秒
-        const delayTimes = [10000, 30000, 60000, 120000, 240000, 480000, 600000, 900000];
-        const delay = delayTimes[retryCount - 1] || 900000;
+        // 双账户重试延迟：根据账户类型调整
+        const baseDelayTimes = [10000, 30000, 60000, 120000, 240000, 480000, 600000, 900000];
+        const multiplier = selectedAccount.id === 'secondary' ? 0.5 : 1; // 免费账户等待时间减半
+        const delay = (baseDelayTimes[retryCount - 1] || 900000) * multiplier;
         
-        console.log(`⏱️ 频率限制重试延迟${delay/1000}秒 (第${retryCount}次重试)...`);
-        console.log(`🎯 当前使用模型: ${options.model || 'unknown'}`);
+        console.log(`⏱️ ${accountConfig.name}频率限制重试延迟${delay/1000}秒 (第${retryCount}次重试)...`);
+        console.log(`🎯 当前使用模型: ${options.model || 'unknown'} @ ${accountConfig.name}`);
         await new Promise(resolve => setTimeout(resolve, delay));
       }
+
+      // 🔗 添加账户信息到请求
+      const requestBody = {
+        ...options,
+        accountId: selectedAccount.id,  // 告诉后端使用哪个账户
+        accountType: selectedAccount.id === 'primary' ? 'paid' : 'free'
+      };
 
       const response = await fetch(`${API_BASE_URL}/openai/chat`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(options)
+        body: JSON.stringify(requestBody)
       });
 
       if (!response.ok) {
@@ -234,11 +531,10 @@ async function callOpenAIChat(options, retryCount = 0, maxRetries = 8) {
         
         // 处理429错误（频率限制）
         if (response.status === 429) {
-          console.warn(`⚠️ ${options.model || 'OpenAI'}模型频率限制，第${retryCount + 1}次重试...`);
+          console.warn(`⚠️ ${accountConfig.name}模型频率限制，第${retryCount + 1}次重试...`);
           
-          // 🧠 记录模型被限频
-          const currentModel = options.model || 'unknown';
-          modelSelector.recordRateLimit(currentModel);
+          // 🔗 记录账户被限频
+          dualAccountBalancer.recordRateLimit(selectedAccount.id, options.model);
           
           if (retryCount < maxRetries) {
             console.log(`🔄 执行第${retryCount + 1}/${maxRetries}次重试...`);
@@ -247,42 +543,47 @@ async function callOpenAIChat(options, retryCount = 0, maxRetries = 8) {
             // 检查错误详情
             const errorMessage = String(error.error || error.message || '');
             if (errorMessage.includes('rate_limit_exceeded')) {
-              console.log(`🎯 确认为频率限制错误，继续重试...`);
+              console.log(`🎯 确认为频率限制错误，自动切换账户重试...`);
             }
             
-            return callOpenAIChat(options, retryCount + 1, maxRetries);
+            return callOpenAIChat(options, taskType, retryCount + 1, maxRetries);
           } else {
-            throw new Error(`OpenAI API频率限制：${options.model || 'unknown'}模型经过${maxRetries}次重试仍失败。
+            // 显示双账户状态
+            const loadStatus = dualAccountBalancer.getLoadStatus();
+            throw new Error(`双账户系统频率限制：${options.model || 'unknown'}模型经过${maxRetries}次重试仍失败。
 
-🔍 频率限制详细分析：
-• 模型：${options.model || 'unknown'}
-• 付费账户限制：GPT-4 (500 RPM), GPT-4o (5000 RPM)
+🔍 双账户详细状态：
+• 主账户(付费): ${loadStatus.primary.calls}次调用, 限频状态: ${loadStatus.primary.rateLimited ? '是' : '否'}
+• 副账户(免费): ${loadStatus.secondary.calls}次调用, 限频状态: ${loadStatus.secondary.rateLimited ? '是' : '否'}
+• 当前模型：${options.model || 'unknown'}
 • 总重试时间：约${Math.round((10+30+60+120+240+480+600+900)/60)}分钟
-• 重试策略：递增延迟，最大化成功率
 
-💡 立即解决方案：
-1. 🕐 等待10-15分钟后重试（推荐）
+💡 双账户解决方案：
+1. 🕐 等待5-10分钟后重试（双账户恢复更快）
 2. 🔄 检查是否有其他标签页在同时生成
-3. 📞 联系OpenAI申请更高频率限制
+3. 📊 免费账户限制：3 RPM，付费账户：GPT-4 (500 RPM), GPT-4o (5000 RPM)
 4. ⏰ 错开使用高峰时段
 
-🚀 付费账户建议：
-• 考虑升级到更高tier的API计划
-• 联系OpenAI客服申请enterprise级别限制
-• 避开美国工作时间使用
+🚀 双账户优势：
+• 负载分散，有效避免单账户频率限制
+• 自动故障转移，提高系统可用性
+• 智能任务分配，优化资源利用
 
-系统将在下次重试时继续优化策略。`);
+系统将在下次重试时继续优化双账户策略。`);
           }
         }
         
         // 处理其他错误
+        dualAccountBalancer.recordAPICall(selectedAccount.id, options.model, false);
         throw new Error(error.error || `HTTP ${response.status}: ${response.statusText}`);
       }
 
-      console.log(`✅ ${options.model || 'OpenAI'}模型调用成功 (经过${retryCount}次重试)`);
+      // 🔗 记录成功调用
+      dualAccountBalancer.recordAPICall(selectedAccount.id, options.model, true);
+      console.log(`✅ ${accountConfig.name}模型调用成功 (经过${retryCount}次重试)`);
       return await response.json();
     } catch (error) {
-      console.error(`${options.model || 'OpenAI'}模型调用失败:`, error);
+      console.error(`${accountConfig.name}模型调用失败:`, error);
       
       // 网络错误的重试（更保守策略）
       if (retryCount < maxRetries && (error.name === 'TypeError' || error.message.includes('fetch'))) {
@@ -290,7 +591,7 @@ async function callOpenAIChat(options, retryCount = 0, maxRetries = 8) {
         const waitTime = Math.min(10000 * (retryCount + 1), 60000); // 10, 20, 30, 40, 50, 60秒
         console.log(`⏱️ 网络重试等待${waitTime/1000}秒...`);
         await new Promise(resolve => setTimeout(resolve, waitTime));
-        return callOpenAIChat(options, retryCount + 1, maxRetries);
+        return callOpenAIChat(options, taskType, retryCount + 1, maxRetries);
       }
       
       throw error;
@@ -307,88 +608,49 @@ async function callOpenAIChat(options, retryCount = 0, maxRetries = 8) {
  * @returns {Promise<string>} 优化后的角色描述关键词
  */
 export async function optimizeCharacterDescription(userDescription, basicInfo = {}) {
+  const { age = 6, gender = 'any', identity = 'human' } = basicInfo;
+  
+  // 🏠 优先使用本地优化逻辑（避免API调用）
   try {
-    const { age = 6, gender = 'any', identity = 'human' } = basicInfo;
+    const localOptimized = optimizeCharacterLocally(userDescription, basicInfo);
+    if (localOptimized) {
+      console.log('🏠 使用本地角色优化 (无API调用):', { 
+        original: userDescription, 
+        enhanced: localOptimized 
+      });
+      return localOptimized;
+    }
+  } catch (error) {
+    console.warn('本地优化失败，尝试API优化:', error);
+  }
+  
+  // 🤖 仅在本地处理不足且API可用时使用AI优化
+  if (!apiController.canCallAPI()) {
+    console.log('⚠️ API调用已达限制，使用简化本地处理');
+    return generateFallbackCharacterDescription(userDescription, basicInfo);
+  }
+
+  try {
+    console.log('🤖 使用AI进行角色优化 (API调用)...');
+    apiController.recordAPICall();
     
-    // 🎯 使用智能模型选择器 - 角色描述优化使用GPT-3.5-turbo
     const modelConfig = modelSelector.getModelConfig('CHARACTER_OPTIMIZATION');
     
-    const systemPrompt = `你是一个专业的角色设计专家，擅长创造简洁但完整的角色形象描述。
-
-**核心任务**：
-- 分析用户描述，补充关键视觉元素（发型、眼色、服装、表情）
-- 确保角色特征协调统一，符合儿童绘本审美
-- 根据用户输入的语言，用相同语言回复
-
-**语言适应规则**：
-- 如果用户用简体中文输入，你必须用简体中文回复
-- 如果用户用繁体中文输入，你必须用繁体中文回复  
-- 如果用户用英语输入，你必须用英语回复
-- 保持与用户输入相同的语言风格
-
-**长度约束**：
-- 中文描述：控制在50个汉字以内
-- 英文描述：控制在50个英文单词以内
-- 优先包含最重要的视觉特征：外貌、服装、表情
-- 去掉冗余修饰词，保持简洁有力
-
-**描述顺序**：
-1. 基本外貌（年龄、性别、发型、眼色）
-2. 核心服装（1-2件主要衣物）
-3. 关键表情或姿态
-4. 1个突出特征（如眼镜、帽子等）
-
-请用与用户输入相同的语言创造角色描述！`;
-
-    const genderText = gender === 'boy' ? '男孩' : gender === 'girl' ? '女孩' : '性别不限';
-    const identityText = identity === 'human' ? '人类儿童' : '动物角色';
-
-    const userPrompt = `请帮我完善以下角色的形象描述：
-
-**角色基础信息：**
-- 年龄：${age}岁${identityText}
-- 性别：${genderText}
-
-**用户提供的描述：**
-"${userDescription}"
-
-**要求：**
-1. 根据用户输入的语言，用相同语言回复
-2. 补充缺失的关键视觉特征
-3. 创造完整但简洁的角色形象
-4. 中文控制在50个汉字以内，英文控制在50个单词以内
-
-**返回格式示例：**
-
-如果用户用中文输入，返回中文：
-"7岁男孩，卷曲棕发，圆框眼镜，蓝色毛衣，灿烂笑容，活泼表情"
-
-如果用户用英文输入，返回英文：
-"7-year-old boy with curly brown hair, round glasses, blue sweater, bright smile, playful expression"
-
-如果用户用繁体中文输入，返回繁体中文：
-"7歲男孩，卷曲棕髮，圓框眼鏡，藍色毛衣，燦爛笑容，活潑表情"
-
-請严格按照用户输入的语言来回复！`;
-
+    // 简化的AI优化提示词（减少token消耗）
     const response = await callOpenAIChat({
       model: modelConfig.model,
       messages: [
         {
-          role: "system",
-          content: systemPrompt
-        },
-        {
           role: "user",
-          content: userPrompt
+          content: `请优化角色描述："${userDescription}"，${age}岁${gender === 'boy' ? '男孩' : gender === 'girl' ? '女孩' : '孩子'}，补充外貌、服装、表情，50字内：`
         }
       ],
-      temperature: modelConfig.temperature,
-      max_tokens: modelConfig.maxTokens
-    });
+      temperature: 0.7,
+      max_tokens: 100 // 减少token消耗
+    }, 'CHARACTER_OPTIMIZATION');
 
     const optimizedDescription = response.choices[0].message.content.trim();
-    console.log('✅ 角色形象智能完善完成 (使用' + modelConfig.model + '):', { 
+    console.log('✅ AI角色优化完成:', { 
       original: userDescription, 
       enhanced: optimizedDescription 
     });
@@ -396,11 +658,70 @@ export async function optimizeCharacterDescription(userDescription, basicInfo = 
     return optimizedDescription;
     
   } catch (error) {
-    console.error('角色形象完善失败:', error);
-    // 如果优化失败，返回原始描述的简单处理版本
-    const fallbackDescription = `cute ${basicInfo.identity === 'animal' ? 'animal' : 'child'} character, ${userDescription}, children's book style, friendly appearance, detailed features`;
-    return fallbackDescription;
+    console.error('AI角色优化失败，使用本地备用方案:', error);
+    return generateFallbackCharacterDescription(userDescription, basicInfo);
   }
+}
+
+// 🏠 本地角色描述优化函数
+function optimizeCharacterLocally(userDescription, basicInfo) {
+  const { age = 6, gender = 'any', identity = 'human' } = basicInfo;
+  
+  // 检查缓存
+  const cacheKey = `char_${userDescription}_${age}_${gender}_${identity}`;
+  if (LOCAL_PROCESSING.cache.has(cacheKey)) {
+    console.log('💾 使用缓存的角色描述');
+    return LOCAL_PROCESSING.cache.get(cacheKey);
+  }
+  
+  // 解析现有描述
+  const description = userDescription.toLowerCase();
+  const parts = [];
+  
+  // 1. 基础信息
+  const genderText = gender === 'boy' ? '男孩' : gender === 'girl' ? '女孩' : '孩子';
+  parts.push(`${age}岁${genderText}`);
+  
+  // 2. 补充发型（如果没有）
+  if (!description.includes('发') && !description.includes('hair')) {
+    const ageGroup = age <= 5 ? '3-5' : age <= 8 ? '6-8' : '9-12';
+    const hairstyles = LOCAL_PROCESSING.CHARACTER_RULES.hairstyles;
+    const randomHair = hairstyles[Math.floor(Math.random() * hairstyles.length)];
+    parts.push(randomHair);
+  }
+  
+  // 3. 补充服装（如果没有）
+  if (!description.includes('衣') && !description.includes('服') && !description.includes('shirt') && !description.includes('dress')) {
+    const clothing = LOCAL_PROCESSING.CHARACTER_RULES.clothing;
+    const randomCloth = clothing[Math.floor(Math.random() * clothing.length)];
+    parts.push(randomCloth);
+  }
+  
+  // 4. 补充表情
+  const ageGroup = age <= 5 ? '3-5' : age <= 8 ? '6-8' : '9-12';
+  const ageFeatures = LOCAL_PROCESSING.CHARACTER_RULES.age_features[ageGroup];
+  const randomFeature = ageFeatures[Math.floor(Math.random() * ageFeatures.length)];
+  parts.push(randomFeature + '的表情');
+  
+  // 5. 整合原描述
+  const result = userDescription + '，' + parts.join('，');
+  
+  // 缓存结果
+  LOCAL_PROCESSING.cache.set(cacheKey, result);
+  
+  return result;
+}
+
+// 🛡️ 备用角色描述生成
+function generateFallbackCharacterDescription(userDescription, basicInfo) {
+  const { age = 6, gender = 'any', identity = 'human' } = basicInfo;
+  
+  // 简单的本地处理
+  const genderText = gender === 'boy' ? '男孩' : gender === 'girl' ? '女孩' : '孩子';
+  const basicDesc = `${age}岁${genderText}，${userDescription}，活泼可爱，适合儿童绘本`;
+  
+  console.log('🛡️ 使用备用角色描述生成');
+  return basicDesc;
 }
 
 /**
@@ -410,68 +731,54 @@ export async function optimizeCharacterDescription(userDescription, basicInfo = 
  * @returns {Promise<string>} 英文角色描述
  */
 export async function translateDescriptionToEnglish(description, basicInfo = {}) {
+  // 如果描述已经是英文，直接返回
+  if (/^[a-zA-Z0-9\s,.-]+$/.test(description)) {
+    console.log('🔤 描述已经是英文，直接使用:', description);
+    return description;
+  }
+  
+  // 🏠 优先使用本地翻译（避免API调用）
   try {
-    // 如果描述已经是英文，直接返回
-    if (/^[a-zA-Z0-9\s,.-]+$/.test(description)) {
-      console.log('🔤 描述已经是英文，直接使用:', description);
-      return description;
+    const localTranslated = translateLocally(description, basicInfo);
+    if (localTranslated && localTranslated !== description) {
+      console.log('🏠 使用本地翻译 (无API调用):', { 
+        original: description, 
+        english: localTranslated 
+      });
+      return localTranslated;
     }
+  } catch (error) {
+    console.warn('本地翻译失败，尝试API翻译:', error);
+  }
+  
+  // 🤖 仅在本地翻译不足且API可用时使用AI翻译
+  if (!apiController.canCallAPI()) {
+    console.log('⚠️ API调用已达限制，使用本地翻译备用方案');
+    return generateFallbackTranslation(description, basicInfo);
+  }
+
+  try {
+    console.log('🤖 使用AI进行翻译 (API调用)...');
+    apiController.recordAPICall();
     
     const { age = 6, gender = 'any', identity = 'human' } = basicInfo;
-    
-    const systemPrompt = `你是一个专业的翻译专家，专门将各种语言的角色描述翻译成适合AI图像生成的英文关键词。
-
-**核心任务**：
-- 将用户的角色描述准确翻译为英文
-- 保持所有关键视觉元素不变
-- 使用适合图像生成的词汇
-- 确保描述简洁但完整
-
-**要求**：
-- 必须返回英文描述
-- 保持原有的所有视觉细节
-- 控制在50个英文单词以内
-- 使用准确的英文图像生成关键词`;
-
-    const userPrompt = `请将以下角色描述翻译为英文：
-
-角色信息：
-- 年龄：${age}岁
-- 性别：${gender === 'boy' ? 'male' : gender === 'girl' ? 'female' : 'any'}
-- 身份：${identity}
-
-需要翻译的描述：
-"${description}"
-
-要求：
-1. 准确翻译所有视觉特征
-2. 保持描述的完整性
-3. 使用适合图像生成的英文词汇
-4. 控制在50个单词以内
-
-请直接返回英文翻译，不需要解释：`;
-
-    // 🎯 使用智能模型选择器 - 翻译任务使用GPT-3.5-turbo
     const modelConfig = modelSelector.getModelConfig('TRANSLATION');
     
+    // 简化的翻译提示词
     const response = await callOpenAIChat({
       model: modelConfig.model,
       messages: [
         {
-          role: "system",
-          content: systemPrompt
-        },
-        {
           role: "user",
-          content: userPrompt
+          content: `翻译为英文："${description}"，${age}岁${gender === 'boy' ? '男孩' : gender === 'girl' ? '女孩' : '孩子'}角色描述，适合图像生成：`
         }
       ],
-      temperature: modelConfig.temperature,
-      max_tokens: modelConfig.maxTokens
-    });
+      temperature: 0.3,
+      max_tokens: 80 // 减少token消耗
+    }, 'TRANSLATION');
 
     const englishDescription = response.choices[0].message.content.trim();
-    console.log('✅ 描述翻译为英文 (使用' + modelConfig.model + '):', { 
+    console.log('✅ AI翻译完成:', { 
       original: description, 
       english: englishDescription 
     });
@@ -479,10 +786,63 @@ export async function translateDescriptionToEnglish(description, basicInfo = {})
     return englishDescription;
     
   } catch (error) {
-    console.error('描述翻译失败:', error);
-    // 如果翻译失败，返回原始描述
-    return description;
+    console.error('AI翻译失败，使用本地备用方案:', error);
+    return generateFallbackTranslation(description, basicInfo);
   }
+}
+
+// 🏠 本地翻译函数
+function translateLocally(description, basicInfo) {
+  const { age = 6, gender = 'any', identity = 'human' } = basicInfo;
+  
+  // 检查缓存
+  const cacheKey = `trans_${description}`;
+  if (LOCAL_PROCESSING.cache.has(cacheKey)) {
+    console.log('💾 使用缓存的翻译');
+    return LOCAL_PROCESSING.cache.get(cacheKey);
+  }
+  
+  // 使用本地词典逐词翻译
+  const dict = LOCAL_PROCESSING.TRANSLATION_DICT;
+  let result = description;
+  
+  // 替换词典中的词汇
+  for (const [chinese, english] of Object.entries(dict)) {
+    if (result.includes(chinese)) {
+      result = result.replace(new RegExp(chinese, 'g'), english);
+    }
+  }
+  
+  // 补充基础信息
+  const ageText = `${age}-year-old`;
+  const genderText = gender === 'boy' ? 'boy' : gender === 'girl' ? 'girl' : 'child';
+  const identityText = identity === 'human' ? 'child' : identity;
+  
+  // 如果翻译后仍有中文，说明需要AI翻译
+  if (/[\u4e00-\u9fff]/.test(result)) {
+    return null; // 返回null表示需要AI翻译
+  }
+  
+  // 整理翻译结果
+  const finalResult = `${ageText} ${genderText}, ${result}, children's book character, cute and friendly`;
+  
+  // 缓存结果
+  LOCAL_PROCESSING.cache.set(cacheKey, finalResult);
+  
+  return finalResult;
+}
+
+// 🛡️ 备用翻译生成
+function generateFallbackTranslation(description, basicInfo) {
+  const { age = 6, gender = 'any', identity = 'human' } = basicInfo;
+  
+  // 简单的本地处理
+  const ageText = `${age}-year-old`;
+  const genderText = gender === 'boy' ? 'boy' : gender === 'girl' ? 'girl' : 'child';
+  const fallbackDesc = `${ageText} ${genderText}, cute character, children's book style, friendly appearance`;
+  
+  console.log('🛡️ 使用备用翻译生成');
+  return fallbackDesc;
 }
 
 /**
@@ -547,7 +907,7 @@ export async function generatePictureBook({ character, story, content, onProgres
       ],
       temperature: modelConfig.temperature,
       max_tokens: modelConfig.maxTokens
-    });
+    }, 'STORY_GENERATION');
 
     const generatedContent = response.choices[0].message.content;
     console.log('OpenAI返回的原始内容:', generatedContent);
@@ -1138,3 +1498,43 @@ function generateFallbackContent({ character, story, content }) {
     finalEducationalTopic: educationalTopic
   };
 }
+
+// 🧠 智能API调用控制器
+class APIUsageController {
+  constructor() {
+    this.callCount = 0;
+    this.dailyLimit = 50; // 每日API调用限制
+    this.sessionLimit = 10; // 每会话API调用限制
+    this.lastResetDate = new Date().toDateString();
+    this.enableLocalFirst = true; // 优先使用本地处理
+  }
+  
+  // 检查是否可以调用API
+  canCallAPI() {
+    const today = new Date().toDateString();
+    if (today !== this.lastResetDate) {
+      this.callCount = 0;
+      this.lastResetDate = today;
+    }
+    
+    return this.callCount < this.dailyLimit && this.callCount < this.sessionLimit;
+  }
+  
+  // 记录API调用
+  recordAPICall() {
+    this.callCount++;
+    console.log(`📊 API调用计数: ${this.callCount}/${this.sessionLimit} (今日限制: ${this.dailyLimit})`);
+  }
+  
+  // 获取调用状态
+  getStatus() {
+    return {
+      canCall: this.canCallAPI(),
+      remaining: this.sessionLimit - this.callCount,
+      dailyRemaining: this.dailyLimit - this.callCount
+    };
+  }
+}
+
+// 创建全局API使用控制器
+const apiController = new APIUsageController();
