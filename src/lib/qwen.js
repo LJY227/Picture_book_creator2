@@ -10,7 +10,7 @@ import {
 // 获取后端API地址 - 使用相对路径
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 
-// 通义千问模型配置
+// 通义千问模型配置 (符合API限制 max_tokens: [1, 16384])
 const QWEN_MODELS = {
   'qwen-turbo': {
     name: 'qwen-turbo',
@@ -23,7 +23,7 @@ const QWEN_MODELS = {
   'qwen-plus': {
     name: 'qwen-plus', 
     description: '通义千问-Plus',
-    maxTokens: 32000,
+    maxTokens: 16384,  // 修正: 符合API限制 [1, 16384]
     temperature: 0.7,
     costPer1KTokens: 0.004,
     rpmLimit: 500
@@ -115,12 +115,18 @@ async function callQwenChat(options, taskType = 'FAST_PROCESSING', retryCount = 
 
     console.log(`🤖 调用通义千问API: ${modelName} (${taskType}) [OpenAI兼容模式]`);
     
-    // 构建OpenAI兼容格式请求体
+    // 构建OpenAI兼容格式请求体 (确保max_tokens在[1, 16384]范围内)
+    const maxTokens = Math.min(
+      options.max_tokens || modelConfig.maxTokens, 
+      modelConfig.maxTokens,
+      16384  // 通义千问API硬限制
+    );
+    
     const requestBody = {
       model: modelName,
       messages: options.messages,
       temperature: options.temperature || modelConfig.temperature,
-      max_tokens: Math.min(options.max_tokens || modelConfig.maxTokens, modelConfig.maxTokens)
+      max_tokens: Math.max(1, maxTokens)  // 确保至少为1
     };
 
     console.log('📤 发送请求 (OpenAI格式):', {
@@ -457,7 +463,7 @@ export async function generatePictureBook({ character, story, content, onProgres
         }
       ],
       temperature: modelConfig.temperature,
-      max_tokens: modelConfig.maxTokens
+      max_tokens: Math.min(modelConfig.maxTokens, 16384)  // 确保符合API限制
     }, 'STORY_GENERATION');
 
     const generatedContent = response.choices[0].message.content;
