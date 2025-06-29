@@ -113,21 +113,22 @@ async function callQwenChat(options, taskType = 'FAST_PROCESSING', retryCount = 
       await new Promise(resolve => setTimeout(resolve, delay));
     }
 
-    console.log(`🤖 调用通义千问API: ${modelName} (${taskType})`);
+    console.log(`🤖 调用通义千问API: ${modelName} (${taskType}) [OpenAI兼容模式]`);
     
-    // 构建请求体
+    // 构建OpenAI兼容格式请求体
     const requestBody = {
       model: modelName,
-      input: {
-        messages: options.messages
-      },
-      parameters: {
-        temperature: options.temperature || modelConfig.temperature,
-        max_tokens: Math.min(options.max_tokens || modelConfig.maxTokens, modelConfig.maxTokens),
-        top_p: options.top_p || 0.8,
-        top_k: options.top_k || 50
-      }
+      messages: options.messages,
+      temperature: options.temperature || modelConfig.temperature,
+      max_tokens: Math.min(options.max_tokens || modelConfig.maxTokens, modelConfig.maxTokens)
     };
+
+    console.log('📤 发送请求 (OpenAI格式):', {
+      model: requestBody.model,
+      messages_count: requestBody.messages?.length,
+      temperature: requestBody.temperature,
+      max_tokens: requestBody.max_tokens
+    });
 
     // 通过后端代理调用通义千问API
     const response = await fetch(`${API_BASE_URL}/qwen/chat`, {
@@ -142,6 +143,8 @@ async function callQwenChat(options, taskType = 'FAST_PROCESSING', retryCount = 
       const error = await response.json().catch(() => ({ 
         error: `HTTP ${response.status}: ${response.statusText}` 
       }));
+      
+      console.error('❌ 后端API错误响应:', error);
       
       // 处理429错误（频率限制）
       if (response.status === 429) {
@@ -159,18 +162,15 @@ async function callQwenChat(options, taskType = 'FAST_PROCESSING', retryCount = 
 
     const result = await response.json();
     console.log(`✅ 通义千问API调用成功 (${modelName})`);
+    console.log('📥 收到响应:', {
+      has_choices: !!result.choices,
+      choices_count: result.choices?.length,
+      has_message: !!(result.choices?.[0]?.message),
+      content_length: result.choices?.[0]?.message?.content?.length
+    });
     
-    // 转换响应格式以兼容原OpenAI格式
-    return {
-      choices: [{
-        message: {
-          content: result.output.text,
-          role: 'assistant'
-        }
-      }],
-      model: modelName,
-      usage: result.usage || {}
-    };
+    // OpenAI兼容模式返回的就是标准OpenAI格式，无需转换
+    return result;
     
   } catch (error) {
     console.error(`通义千问API调用失败 (${taskType}):`, error);

@@ -319,69 +319,76 @@ app.post('/api/openai/images', async (req, res) => {
   }
 });
 
-// 🤖 通义千问API代理
+// 🤖 通义千问API代理 (OpenAI兼容模式)
 app.post('/api/qwen/chat', async (req, res) => {
   try {
-    const { model = 'qwen-turbo', input, parameters } = req.body;
+    const { model = 'qwen-turbo', messages, temperature, max_tokens, ...otherParams } = req.body;
     
     // 🔍 详细调试日志
-    console.log('🔍 通义千问API调试信息:');
-    console.log('  📝 请求参数:', { model, hasInput: !!input, hasMessages: !!(input?.messages) });
-    console.log('  🔑 API密钥状态:', process.env.VITE_QWEN_API_KEY ? 
-      `已配置 (${process.env.VITE_QWEN_API_KEY.substring(0, 10)}...)` : '❌ 未配置');
+    console.log('🔍 通义千问API调试信息 (OpenAI兼容模式):');
+    console.log('  📝 请求参数:', { model, hasMessages: !!messages, messagesCount: messages?.length });
     
-    if (!input || !input.messages) {
-      console.log('❌ 参数验证失败: 缺少input.messages');
+    // 检查多个可能的API密钥环境变量
+    const apiKey = process.env.VITE_QWEN_API_KEY || process.env.DASHSCOPE_API_KEY;
+    console.log('  🔑 API密钥状态:', apiKey ? 
+      `已配置 (${apiKey.substring(0, 10)}...)` : '❌ 未配置');
+    console.log('  🔍 环境变量检查:', {
+      VITE_QWEN_API_KEY: !!process.env.VITE_QWEN_API_KEY,
+      DASHSCOPE_API_KEY: !!process.env.DASHSCOPE_API_KEY
+    });
+    
+    if (!messages || !Array.isArray(messages)) {
+      console.log('❌ 参数验证失败: 缺少messages数组');
       return res.status(400).json({ 
-        error: '缺少input.messages参数',
-        received: { model, input: !!input, messages: !!(input?.messages) }
+        error: '缺少messages参数或格式错误',
+        received: { model, hasMessages: !!messages, isArray: Array.isArray(messages) },
+        expected: 'messages should be an array of {role, content} objects'
       });
     }
     
     // 检查API密钥配置
-    if (!process.env.VITE_QWEN_API_KEY) {
-      console.log('❌ 环境变量检查失败: VITE_QWEN_API_KEY未配置');
+    if (!apiKey) {
+      console.log('❌ 环境变量检查失败: 通义千问API密钥未配置');
       return res.status(500).json({ 
         error: '通义千问API密钥未配置',
-        details: '请在环境变量中配置 VITE_QWEN_API_KEY',
+        details: '请在环境变量中配置 VITE_QWEN_API_KEY 或 DASHSCOPE_API_KEY',
         env_check: {
           VITE_QWEN_API_KEY: 'not_configured',
-          available_vars: Object.keys(process.env).filter(key => key.includes('QWEN'))
+          DASHSCOPE_API_KEY: 'not_configured',
+          available_vars: Object.keys(process.env).filter(key => key.includes('QWEN') || key.includes('DASHSCOPE'))
         }
       });
     }
     
-    console.log(`🤖 准备调用通义千问API: ${model}`);
-    console.log('  📤 消息数量:', input.messages.length);
+    console.log(`🤖 使用OpenAI兼容模式调用通义千问API: ${model}`);
+    console.log('  📤 消息数量:', messages.length);
+    console.log('  📋 消息预览:', messages.map(m => ({ role: m.role, content: m.content?.substring(0, 50) + '...' })));
     
     const fetch = (await import('node-fetch')).default;
     
-    // 构建请求体
+    // 构建标准OpenAI格式请求体
     const requestBody = {
       model: model,
-      input: input,
-      parameters: {
-        temperature: parameters?.temperature || 0.7,
-        max_tokens: parameters?.max_tokens || 1500,
-        top_p: parameters?.top_p || 0.8,
-        top_k: parameters?.top_k || 50,
-        ...parameters
-      }
+      messages: messages,
+      temperature: temperature || 0.7,
+      max_tokens: max_tokens || 1500,
+      ...otherParams
     };
     
-    console.log('📦 构建的请求体:', {
+    console.log('📦 构建的请求体 (OpenAI格式):', {
       model: requestBody.model,
-      input_messages_count: requestBody.input.messages?.length,
-      parameters: requestBody.parameters
+      messages_count: requestBody.messages.length,
+      temperature: requestBody.temperature,
+      max_tokens: requestBody.max_tokens
     });
     
-    // 调用通义千问API
-    console.log('🌐 发送请求到通义千问API...');
-    const response = await fetch('https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation', {
+    // 调用通义千问API (OpenAI兼容模式)
+    console.log('🌐 发送请求到通义千问API (OpenAI兼容模式)...');
+    const response = await fetch('https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${process.env.VITE_QWEN_API_KEY}`
+        'Authorization': `Bearer ${apiKey}`
       },
       body: JSON.stringify(requestBody)
     });
@@ -420,8 +427,9 @@ app.post('/api/qwen/chat', async (req, res) => {
     
     console.log(`✅ 通义千问API调用成功 (${model})`);
     console.log('📨 返回结果:', { 
-      has_output: !!result.output, 
-      has_text: !!(result.output?.text),
+      has_choices: !!result.choices, 
+      choices_count: result.choices?.length,
+      has_message: !!(result.choices?.[0]?.message),
       usage: result.usage 
     });
     res.json(result);
@@ -543,12 +551,15 @@ app.listen(PORT, () => {
   console.log('\n🔍 环境变量配置检查:');
   console.log(`  🔑 VITE_QWEN_API_KEY: ${process.env.VITE_QWEN_API_KEY ? 
     `已配置 (${process.env.VITE_QWEN_API_KEY.substring(0, 10)}...)` : '❌ 未配置'}`);
+  console.log(`  🔑 DASHSCOPE_API_KEY: ${process.env.DASHSCOPE_API_KEY ? 
+    `已配置 (${process.env.DASHSCOPE_API_KEY.substring(0, 10)}...)` : '❌ 未配置'}`);
   console.log(`  🔑 VITE_LIBLIB_ACCESS_KEY: ${process.env.VITE_LIBLIB_ACCESS_KEY ? 
     `已配置 (${process.env.VITE_LIBLIB_ACCESS_KEY.substring(0, 10)}...)` : '❌ 未配置'}`);
   console.log(`  🔑 VITE_LIBLIB_SECRET_KEY: ${process.env.VITE_LIBLIB_SECRET_KEY ? 
     `已配置 (${process.env.VITE_LIBLIB_SECRET_KEY.substring(0, 10)}...)` : '❌ 未配置'}`);
   console.log(`  🌐 NODE_ENV: ${process.env.NODE_ENV || '未设置'}`);
-  console.log(`  📱 PORT: ${PORT}\n`);
+  console.log(`  📱 PORT: ${PORT}`);
+  console.log(`  🔧 通义千问模式: OpenAI兼容模式\n`);
 });
 
 export default app;
