@@ -324,19 +324,35 @@ app.post('/api/qwen/chat', async (req, res) => {
   try {
     const { model = 'qwen-turbo', input, parameters } = req.body;
     
+    // 🔍 详细调试日志
+    console.log('🔍 通义千问API调试信息:');
+    console.log('  📝 请求参数:', { model, hasInput: !!input, hasMessages: !!(input?.messages) });
+    console.log('  🔑 API密钥状态:', process.env.VITE_QWEN_API_KEY ? 
+      `已配置 (${process.env.VITE_QWEN_API_KEY.substring(0, 10)}...)` : '❌ 未配置');
+    
     if (!input || !input.messages) {
-      return res.status(400).json({ error: '缺少input.messages参数' });
+      console.log('❌ 参数验证失败: 缺少input.messages');
+      return res.status(400).json({ 
+        error: '缺少input.messages参数',
+        received: { model, input: !!input, messages: !!(input?.messages) }
+      });
     }
     
     // 检查API密钥配置
     if (!process.env.VITE_QWEN_API_KEY) {
+      console.log('❌ 环境变量检查失败: VITE_QWEN_API_KEY未配置');
       return res.status(500).json({ 
         error: '通义千问API密钥未配置',
-        details: '请在环境变量中配置 VITE_QWEN_API_KEY'
+        details: '请在环境变量中配置 VITE_QWEN_API_KEY',
+        env_check: {
+          VITE_QWEN_API_KEY: 'not_configured',
+          available_vars: Object.keys(process.env).filter(key => key.includes('QWEN'))
+        }
       });
     }
     
-    console.log(`🤖 调用通义千问API: ${model}`);
+    console.log(`🤖 准备调用通义千问API: ${model}`);
+    console.log('  📤 消息数量:', input.messages.length);
     
     const fetch = (await import('node-fetch')).default;
     
@@ -353,7 +369,14 @@ app.post('/api/qwen/chat', async (req, res) => {
       }
     };
     
+    console.log('📦 构建的请求体:', {
+      model: requestBody.model,
+      input_messages_count: requestBody.input.messages?.length,
+      parameters: requestBody.parameters
+    });
+    
     // 调用通义千问API
+    console.log('🌐 发送请求到通义千问API...');
     const response = await fetch('https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation', {
       method: 'POST',
       headers: {
@@ -363,10 +386,25 @@ app.post('/api/qwen/chat', async (req, res) => {
       body: JSON.stringify(requestBody)
     });
     
-    const result = await response.json();
+    console.log(`📡 API响应状态: ${response.status} ${response.statusText}`);
+    
+    const responseText = await response.text();
+    console.log('📄 原始响应内容 (前500字符):', responseText.substring(0, 500));
+    
+    let result;
+    try {
+      result = JSON.parse(responseText);
+    } catch (parseError) {
+      console.error('❌ JSON解析失败:', parseError.message);
+      return res.status(500).json({
+        error: 'API响应格式错误',
+        details: responseText.substring(0, 500),
+        status: response.status
+      });
+    }
     
     if (!response.ok) {
-      console.error(`❌ 通义千问API调用失败:`, result);
+      console.error(`❌ 通义千问API调用失败 (${response.status}):`, result);
       
       // 处理特定错误
       if (response.status === 429) {
@@ -381,13 +419,24 @@ app.post('/api/qwen/chat', async (req, res) => {
     }
     
     console.log(`✅ 通义千问API调用成功 (${model})`);
+    console.log('📨 返回结果:', { 
+      has_output: !!result.output, 
+      has_text: !!(result.output?.text),
+      usage: result.usage 
+    });
     res.json(result);
     
   } catch (error) {
-    console.error('通义千问API代理错误:', error);
+    console.error('❌ 通义千问API代理发生异常:', {
+      message: error.message,
+      stack: error.stack,
+      name: error.name
+    });
     res.status(500).json({ 
       error: error.message,
-      details: '通义千问服务器内部错误，请稍后重试'
+      details: '通义千问服务器内部错误，请稍后重试',
+      error_type: error.name,
+      timestamp: new Date().toISOString()
     });
   }
 });
@@ -489,6 +538,17 @@ app.get("*", (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`🚀 图画书创作器API服务器运行在 http://localhost:${PORT}`);
+  
+  // 🔍 启动时环境变量检查
+  console.log('\n🔍 环境变量配置检查:');
+  console.log(`  🔑 VITE_QWEN_API_KEY: ${process.env.VITE_QWEN_API_KEY ? 
+    `已配置 (${process.env.VITE_QWEN_API_KEY.substring(0, 10)}...)` : '❌ 未配置'}`);
+  console.log(`  🔑 VITE_LIBLIB_ACCESS_KEY: ${process.env.VITE_LIBLIB_ACCESS_KEY ? 
+    `已配置 (${process.env.VITE_LIBLIB_ACCESS_KEY.substring(0, 10)}...)` : '❌ 未配置'}`);
+  console.log(`  🔑 VITE_LIBLIB_SECRET_KEY: ${process.env.VITE_LIBLIB_SECRET_KEY ? 
+    `已配置 (${process.env.VITE_LIBLIB_SECRET_KEY.substring(0, 10)}...)` : '❌ 未配置'}`);
+  console.log(`  🌐 NODE_ENV: ${process.env.NODE_ENV || '未设置'}`);
+  console.log(`  📱 PORT: ${PORT}\n`);
 });
 
 export default app;
