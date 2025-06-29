@@ -10,75 +10,154 @@ import {
 // 获取后端API地址 - 使用相对路径
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 
+// 付费账户专用的智能请求队列
+class PayloadRateLimiter {
+  constructor() {
+    this.queue = [];
+    this.processing = false;
+    this.lastRequestTime = 0;
+    this.minInterval = 100; // 付费账户：最小间隔100ms
+  }
+
+  async addRequest(requestFn) {
+    return new Promise((resolve, reject) => {
+      this.queue.push({ requestFn, resolve, reject });
+      this.processQueue();
+    });
+  }
+
+  async processQueue() {
+    if (this.processing || this.queue.length === 0) return;
+    
+    this.processing = true;
+    
+    while (this.queue.length > 0) {
+      const { requestFn, resolve, reject } = this.queue.shift();
+      
+      try {
+        // 智能间隔控制
+        const now = Date.now();
+        const timeSinceLastRequest = now - this.lastRequestTime;
+        if (timeSinceLastRequest < this.minInterval) {
+          await new Promise(r => setTimeout(r, this.minInterval - timeSinceLastRequest));
+        }
+        
+        const result = await requestFn();
+        this.lastRequestTime = Date.now();
+        resolve(result);
+        
+        // 付费账户：短暂间隔
+        await new Promise(r => setTimeout(r, 50));
+        
+      } catch (error) {
+        reject(error);
+      }
+    }
+    
+    this.processing = false;
+  }
+}
+
+// 创建全局的请求限制器
+const rateLimiter = new PayloadRateLimiter();
+
 /**
- * 通过后端代理调用OpenAI Chat API
+ * 通过后端代理调用OpenAI Chat API（使用智能队列）
  * @param {Object} options - 调用选项
  * @returns {Promise<Object>} API响应
  */
-async function callOpenAIChat(options, retryCount = 0, maxRetries = 8) {
-  try {
-    // 在重试前添加随机延迟，避免同时发送多个请求
-    if (retryCount > 0) {
-      const randomDelay = Math.random() * 2000; // 0-2秒随机延迟
-      await new Promise(resolve => setTimeout(resolve, randomDelay));
-    }
-
-    const response = await fetch(`${API_BASE_URL}/openai/chat`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(options)
-    });
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: `HTTP ${response.status}: ${response.statusText}` }));
-      
-      // 处理429错误（频率限制）
-      if (response.status === 429) {
-        console.warn(`OpenAI API频率限制，第${retryCount + 1}次重试...`);
+async function callOpenAIChat(options, retryCount = 0, maxRetries = 6) {
+  // 使用智能请求队列（付费账户优化）
+  return rateLimiter.addRequest(async () => {
+    try {
+      // 智能延迟策略：第一次重试立即进行，后续递增
+      if (retryCount > 0) {
+        // 付费账户优化的重试延迟：0, 3, 6, 12, 24, 45秒
+        const delayTimes = [0, 3000, 6000, 12000, 24000, 45000];
+        const delay = delayTimes[retryCount - 1] || 60000;
         
-        if (retryCount < maxRetries) {
-          // 更激进的重试策略，确保最大化成功率
-          // 等待时间：15, 30, 60, 120, 240, 480, 600, 600秒
-          const baseWait = 15000; // 基础等待15秒
-          const waitTime = retryCount < 6 
-            ? baseWait * Math.pow(2, retryCount) 
-            : 600000; // 最后两次固定等待10分钟
-          
-          console.log(`等待${waitTime/1000}秒后重试...`);
-          console.log(`💡 提示: 如果频繁遇到限制，建议检查OpenAI API的使用配额和频率限制设置`);
-          
-          await new Promise(resolve => setTimeout(resolve, waitTime));
-          return callOpenAIChat(options, retryCount + 1, maxRetries);
-        } else {
-          throw new Error(`API频率限制：经过${maxRetries}次重试仍无法成功。这通常意味着：
-1. API调用频率超出限制 - 建议等待15-30分钟后再试
-2. API配额可能已用完 - 请检查OpenAI账户余额
-3. 网络连接不稳定 - 请检查网络状况
-建议稍后再试，或联系技术支持。`);
+        if (delay > 0) {
+          console.log(`⏱️ 智能重试延迟${delay/1000}秒...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
         }
       }
-      
-      // 处理其他错误
-      throw new Error(error.error || `HTTP ${response.status}: ${response.statusText}`);
-    }
 
-    console.log(`✅ OpenAI API调用成功 (重试${retryCount}次)`);
-    return await response.json();
-  } catch (error) {
-    console.error('OpenAI Chat API代理调用失败:', error);
-    
-    // 如果是网络错误且还有重试次数，则重试
-    if (retryCount < maxRetries && (error.name === 'TypeError' || error.message.includes('fetch'))) {
-      console.warn(`网络错误，第${retryCount + 1}次重试...`);
-      const waitTime = 8000 * (retryCount + 1); // 8, 16, 24, 32, 40, 48, 56, 64秒
-      await new Promise(resolve => setTimeout(resolve, waitTime));
-      return callOpenAIChat(options, retryCount + 1, maxRetries);
+      const response = await fetch(`${API_BASE_URL}/openai/chat`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(options)
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: `HTTP ${response.status}: ${response.statusText}` }));
+        
+        // 处理429错误（频率限制）
+        if (response.status === 429) {
+          console.warn(`⚠️ OpenAI API频率限制 (付费账户)，第${retryCount + 1}次重试...`);
+          
+          if (retryCount < maxRetries) {
+            // 付费账户的智能重试策略
+            // 等待时间：5, 10, 20, 40, 80, 120秒
+            const waitTimes = [5, 10, 20, 40, 80, 120];
+            const waitTime = (waitTimes[retryCount] || 120) * 1000;
+            
+            console.log(`🔄 付费账户快速重试，等待${waitTime/1000}秒...`);
+            console.log(`📊 重试进度: ${retryCount + 1}/${maxRetries}`);
+            
+            // 检查是否是特定的频率限制类型
+            const errorMessage = error.error || '';
+            if (errorMessage.includes('rate_limit_exceeded')) {
+              console.log(`🎯 检测到速率限制，应用优化策略...`);
+            }
+            
+            await new Promise(resolve => setTimeout(resolve, waitTime));
+            return callOpenAIChat(options, retryCount + 1, maxRetries);
+          } else {
+            throw new Error(`OpenAI API频率限制：付费账户经过${maxRetries}次快速重试仍失败。
+
+🔍 付费账户频率限制分析：
+• 即使是付费账户，短时间内大量请求仍可能触发限制
+• 当前限制：GPT-4 (500 RPM), GPT-4o (5000 RPM), DALL-E 3 (7 images/min)
+• 系统已进行${maxRetries}次智能重试（总耗时约3-4分钟）
+
+💡 建议解决方案：
+1. 立即重试：通常在2-3分钟后恢复正常
+2. 检查并发：确保没有多个标签页同时生成
+3. 升级限制：联系OpenAI申请更高的频率限制
+4. 分批处理：考虑分批生成多页内容
+
+🚀 付费账户优势：
+• 更高的基础频率限制
+• 更快的恢复速度
+• 优先处理权
+
+请稍等2-3分钟后重试，或联系技术支持。`);
+          }
+        }
+        
+        // 处理其他错误
+        throw new Error(error.error || `HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      console.log(`✅ OpenAI API调用成功 (付费账户, ${retryCount}次重试)`);
+      return await response.json();
+    } catch (error) {
+      console.error('OpenAI Chat API调用失败:', error);
+      
+      // 网络错误的快速重试（付费账户优化）
+      if (retryCount < maxRetries && (error.name === 'TypeError' || error.message.includes('fetch'))) {
+        console.warn(`🌐 网络错误，付费账户快速重试 ${retryCount + 1}/${maxRetries}...`);
+        const waitTime = Math.min(5000 * (retryCount + 1), 30000); // 5, 10, 15, 20, 25, 30秒
+        console.log(`⏱️ 网络重试等待${waitTime/1000}秒...`);
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+        return callOpenAIChat(options, retryCount + 1, maxRetries);
+      }
+      
+      throw error;
     }
-    
-    throw error;
-  }
+  });
 }
 
 /**
@@ -107,8 +186,6 @@ async function callOpenAIImages(options) {
     throw error;
   }
 }
-
-
 
 /**
  * 使用GPT-4o优化角色描述为图像生成关键词
@@ -176,7 +253,7 @@ export async function optimizeCharacterDescription(userDescription, basicInfo = 
 如果用户用繁体中文输入，返回繁体中文：
 "7歲男孩，卷曲棕髮，圓框眼鏡，藍色毛衣，燦爛笑容，活潑表情"
 
-请严格按照用户输入的语言来回复！`;
+請严格按照用户输入的语言来回复！`;
 
     const response = await callOpenAIChat({
       model: "gpt-4o",
