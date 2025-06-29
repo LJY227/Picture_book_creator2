@@ -36,22 +36,22 @@ const DUAL_ACCOUNT_CONFIG = {
     }
   },
   
-  // 任务分配策略
+  // 🚀 超激进任务分配策略 - 最大化避免频率限制
   TASK_DISTRIBUTION: {
-    // 故事生成：使用主账户（需要高质量）
-    STORY_GENERATION: 'primary',
+    // 故事生成：优先副账户（减少主账户压力）
+    STORY_GENERATION: 'secondary_first',
     
-    // 角色优化：轮流使用（分散负载）
-    CHARACTER_OPTIMIZATION: 'rotate',
+    // 角色优化：优先副账户（简单任务）
+    CHARACTER_OPTIMIZATION: 'secondary_first',
     
-    // 翻译任务：优先副账户（任务简单）
-    TRANSLATION: 'secondary',
+    // 翻译任务：优先副账户（最简单）
+    TRANSLATION: 'secondary_first',
     
     // 快速处理：优先副账户
-    FAST_PROCESSING: 'secondary',
+    FAST_PROCESSING: 'secondary_first',
     
-    // 高质量创作：主账户
-    HIGH_QUALITY: 'primary'
+    // 高质量创作：仅在副账户失败时使用主账户
+    HIGH_QUALITY: 'secondary_first'
   }
 };
 
@@ -65,7 +65,8 @@ class DualAccountBalancer {
         lastResetTime: Date.now(),
         isRateLimited: false,
         rateLimitUntil: 0,
-        modelUsage: new Map() // 追踪每个模型的使用
+        modelUsage: new Map(),
+        lastCallTime: 0  // 追踪上次调用时间
       },
       secondary: {
         id: 'secondary',
@@ -73,64 +74,68 @@ class DualAccountBalancer {
         lastResetTime: Date.now(),
         isRateLimited: false,
         rateLimitUntil: 0,
-        modelUsage: new Map()
+        modelUsage: new Map(),
+        lastCallTime: 0
       }
     };
     
-    this.rotationIndex = 0; // 用于轮流分配
+    this.rotationIndex = 0;
+    this.globalMinInterval = 5000; // 🛡️ 全局最小间隔：5秒
   }
   
-  // 选择最佳账户
+  // 🚀 优化的账户选择逻辑
   selectAccount(taskType, modelName) {
     const strategy = DUAL_ACCOUNT_CONFIG.TASK_DISTRIBUTION[taskType];
     const now = Date.now();
     
-    // 检查账户是否从频率限制中恢复
     this.checkRateLimitRecovery();
     
     let selectedAccount = null;
     
-    switch (strategy) {
-      case 'primary':
-        selectedAccount = this.accounts.primary.isRateLimited ? 
-          this.accounts.secondary : this.accounts.primary;
-        break;
-        
-      case 'secondary':
-        selectedAccount = this.accounts.secondary.isRateLimited ? 
-          this.accounts.primary : this.accounts.secondary;
-        break;
-        
-      case 'rotate':
-        // 轮流使用，但跳过被限频的账户
-        const accountIds = ['primary', 'secondary'];
-        for (let i = 0; i < accountIds.length; i++) {
-          const accountId = accountIds[(this.rotationIndex + i) % accountIds.length];
-          if (!this.accounts[accountId].isRateLimited) {
-            selectedAccount = this.accounts[accountId];
-            this.rotationIndex = (this.rotationIndex + 1) % accountIds.length;
-            break;
-          }
+    // 🎯 新策略：secondary_first（优先使用副账户）
+    if (strategy === 'secondary_first') {
+      // 首先检查副账户是否可用
+      if (!this.accounts.secondary.isRateLimited) {
+        // 检查副账户是否太频繁调用
+        const timeSinceLastCall = now - this.accounts.secondary.lastCallTime;
+        if (timeSinceLastCall >= this.globalMinInterval) {
+          selectedAccount = this.accounts.secondary;
+          console.log(`🥇 优先选择副账户 (距离上次调用: ${timeSinceLastCall/1000}秒)`);
+        } else {
+          console.log(`⏰ 副账户需要等待 ${(this.globalMinInterval - timeSinceLastCall)/1000}秒`);
         }
-        break;
-        
-      default:
-        // 默认选择可用的账户
-        selectedAccount = !this.accounts.primary.isRateLimited ? 
-          this.accounts.primary : this.accounts.secondary;
+      }
+      
+      // 如果副账户不可用，检查主账户
+      if (!selectedAccount && !this.accounts.primary.isRateLimited) {
+        const timeSinceLastCall = now - this.accounts.primary.lastCallTime;
+        if (timeSinceLastCall >= this.globalMinInterval) {
+          selectedAccount = this.accounts.primary;
+          console.log(`🥈 降级使用主账户 (距离上次调用: ${timeSinceLastCall/1000}秒)`);
+        } else {
+          console.log(`⏰ 主账户需要等待 ${(this.globalMinInterval - timeSinceLastCall)/1000}秒`);
+        }
+      }
     }
     
-    // 如果所有账户都被限频，选择恢复时间最早的
-    if (!selectedAccount || selectedAccount.isRateLimited) {
-      selectedAccount = this.accounts.primary.rateLimitUntil < this.accounts.secondary.rateLimitUntil ?
-        this.accounts.primary : this.accounts.secondary;
+    // 如果都不可用，选择限频时间最短的
+    if (!selectedAccount) {
+      if (this.accounts.secondary.rateLimitUntil < this.accounts.primary.rateLimitUntil) {
+        selectedAccount = this.accounts.secondary;
+        console.log(`🚨 所有账户受限，选择副账户 (恢复时间较短)`);
+      } else {
+        selectedAccount = this.accounts.primary;
+        console.log(`🚨 所有账户受限，选择主账户 (恢复时间较短)`);
+      }
     }
     
     const accountConfig = selectedAccount.id === 'primary' ? 
       DUAL_ACCOUNT_CONFIG.PRIMARY : DUAL_ACCOUNT_CONFIG.SECONDARY;
     
-    console.log(`🎯 任务"${taskType}"选择${accountConfig.name} (${selectedAccount.id})`);
-    console.log(`📊 账户状态: 主账户=${this.accounts.primary.callCount}次调用, 副账户=${this.accounts.secondary.callCount}次调用`);
+    console.log(`🎯 任务"${taskType}"最终选择${accountConfig.name} (${selectedAccount.id})`);
+    console.log(`📊 详细状态:`);
+    console.log(`  - 主账户: ${this.accounts.primary.callCount}次调用, 限频: ${this.accounts.primary.isRateLimited ? '是' : '否'}`);
+    console.log(`  - 副账户: ${this.accounts.secondary.callCount}次调用, 限频: ${this.accounts.secondary.isRateLimited ? '是' : '否'}`);
     
     return selectedAccount;
   }
@@ -141,31 +146,45 @@ class DualAccountBalancer {
     if (!account) return;
     
     account.callCount++;
+    account.lastCallTime = Date.now(); // 🔑 记录调用时间
     
-    // 记录模型使用情况
     const modelCount = account.modelUsage.get(modelName) || 0;
     account.modelUsage.set(modelName, modelCount + 1);
     
+    const accountConfig = accountId === 'primary' ? 
+      DUAL_ACCOUNT_CONFIG.PRIMARY : DUAL_ACCOUNT_CONFIG.SECONDARY;
+    
     if (success) {
-      console.log(`✅ ${accountId}账户调用成功: ${modelName} (总计: ${account.callCount}次)`);
+      console.log(`✅ ${accountConfig.name}调用成功: ${modelName} (总计: ${account.callCount}次)`);
     } else {
-      console.log(`❌ ${accountId}账户调用失败: ${modelName}`);
+      console.log(`❌ ${accountConfig.name}调用失败: ${modelName}`);
     }
   }
   
-  // 记录账户被限频
-  recordRateLimit(accountId, modelName, rateLimitDuration = 60000) {
+  // 🚀 增强的限频记录（更长的恢复时间）
+  recordRateLimit(accountId, modelName, rateLimitDuration = 300000) { // 5分钟 -> 5分钟
     const account = this.accounts[accountId];
     if (!account) return;
     
     account.isRateLimited = true;
     account.rateLimitUntil = Date.now() + rateLimitDuration;
     
+    // 🛡️ 根据账户类型调整恢复时间
+    if (accountId === 'secondary') {
+      // 免费账户限频更严重，延长恢复时间到10分钟
+      rateLimitDuration = 600000;
+      account.rateLimitUntil = Date.now() + rateLimitDuration;
+    }
+    
     const accountConfig = accountId === 'primary' ? 
       DUAL_ACCOUNT_CONFIG.PRIMARY : DUAL_ACCOUNT_CONFIG.SECONDARY;
     
     console.log(`⚠️ ${accountConfig.name}被限频: ${modelName}，${rateLimitDuration/1000}秒后恢复`);
     console.log(`🔄 自动切换到${accountId === 'primary' ? '副账户' : '主账户'}`);
+    
+    // 🚀 增加全局间隔以减少后续限频
+    this.globalMinInterval = Math.min(this.globalMinInterval * 1.5, 15000); // 最大15秒
+    console.log(`🛡️ 全局最小间隔增加到 ${this.globalMinInterval/1000}秒`);
   }
   
   // 检查限频恢复
@@ -181,22 +200,62 @@ class DualAccountBalancer {
           DUAL_ACCOUNT_CONFIG.PRIMARY : DUAL_ACCOUNT_CONFIG.SECONDARY;
         
         console.log(`🎉 ${accountConfig.name}已从频率限制中恢复！`);
+        
+        // 恢复后适当减少全局间隔
+        this.globalMinInterval = Math.max(this.globalMinInterval * 0.8, 5000);
+        console.log(`📈 全局最小间隔减少到 ${this.globalMinInterval/1000}秒`);
       }
     }
+  }
+  
+  // 获取等待时间建议
+  getWaitTimeRecommendation(accountId) {
+    const account = this.accounts[accountId];
+    if (!account) return 0;
+    
+    const now = Date.now();
+    const timeSinceLastCall = now - account.lastCallTime;
+    const requiredWait = this.globalMinInterval - timeSinceLastCall;
+    
+    return Math.max(requiredWait, 0);
+  }
+  
+  // 🔧 获取系统配置诊断
+  getDiagnostics() {
+    return {
+      globalMinInterval: this.globalMinInterval,
+      accounts: {
+        primary: {
+          ...this.accounts.primary,
+          nextAvailableTime: this.accounts.primary.lastCallTime + this.globalMinInterval,
+          waitTime: this.getWaitTimeRecommendation('primary')
+        },
+        secondary: {
+          ...this.accounts.secondary,
+          nextAvailableTime: this.accounts.secondary.lastCallTime + this.globalMinInterval,
+          waitTime: this.getWaitTimeRecommendation('secondary')
+        }
+      }
+    };
   }
   
   // 获取负载状态
   getLoadStatus() {
     return {
+      globalInterval: this.globalMinInterval,
       primary: {
         calls: this.accounts.primary.callCount,
         rateLimited: this.accounts.primary.isRateLimited,
-        models: Object.fromEntries(this.accounts.primary.modelUsage)
+        models: Object.fromEntries(this.accounts.primary.modelUsage),
+        lastCall: this.accounts.primary.lastCallTime,
+        waitTime: this.getWaitTimeRecommendation('primary')
       },
       secondary: {
         calls: this.accounts.secondary.callCount,
         rateLimited: this.accounts.secondary.isRateLimited,
-        models: Object.fromEntries(this.accounts.secondary.modelUsage)
+        models: Object.fromEntries(this.accounts.secondary.modelUsage),
+        lastCall: this.accounts.secondary.lastCallTime,
+        waitTime: this.getWaitTimeRecommendation('secondary')
       }
     };
   }
@@ -414,14 +473,15 @@ class SmartModelSelector {
 // 创建全局的智能模型选择器
 const modelSelector = new SmartModelSelector();
 
-// 🛡️ 超保守的智能请求队列 - 专门针对频率限制优化
+// 🛡️ 超保守的智能请求队列 - 专门针对双账户频率限制优化
 class PayloadRateLimiter {
   constructor() {
     this.queue = [];
     this.processing = false;
     this.lastRequestTime = 0;
-    this.minInterval = 2000; // 超保守：最小间隔2秒
-    this.recentErrors = new Map(); // 追踪最近的错误
+    this.minInterval = 8000; // 🚀 超保守：最小间隔8秒（从2秒增加）
+    this.recentErrors = new Map();
+    this.consecutiveErrors = 0; // 连续错误计数
   }
 
   async addRequest(requestFn) {
@@ -443,28 +503,45 @@ class PayloadRateLimiter {
         // 🛡️ 超保守的间隔控制
         const now = Date.now();
         const timeSinceLastRequest = now - this.lastRequestTime;
-        const requiredWait = this.minInterval;
+        let requiredWait = this.minInterval;
+        
+        // 🚀 根据连续错误次数增加额外延迟
+        if (this.consecutiveErrors > 0) {
+          const errorPenalty = this.consecutiveErrors * 5000; // 每次错误增加5秒
+          requiredWait += errorPenalty;
+          console.log(`🚨 连续错误${this.consecutiveErrors}次，增加${errorPenalty/1000}秒延迟`);
+        }
         
         if (timeSinceLastRequest < requiredWait) {
           const waitTime = requiredWait - timeSinceLastRequest;
           console.log(`⏱️ 请求队列等待${waitTime/1000}秒以避免频率限制...`);
+          console.log(`📊 当前最小间隔: ${this.minInterval/1000}秒，连续错误: ${this.consecutiveErrors}次`);
           await new Promise(r => setTimeout(r, waitTime));
         }
         
+        console.log(`🚀 执行API请求 (距离上次: ${(Date.now() - this.lastRequestTime)/1000}秒)...`);
         const result = await requestFn();
         this.lastRequestTime = Date.now();
+        
+        // 🎉 成功时重置连续错误计数
+        this.consecutiveErrors = 0;
         resolve(result);
         
         // 🛡️ 请求间额外间隔，防止连续请求
-        console.log(`✅ 请求完成，额外等待3秒...`);
-        await new Promise(r => setTimeout(r, 3000));
+        const extraWait = 6000; // 增加到6秒
+        console.log(`✅ 请求完成，额外等待${extraWait/1000}秒...`);
+        await new Promise(r => setTimeout(r, extraWait));
         
       } catch (error) {
-        // 记录错误，如果是频率限制错误，增加间隔
+        this.consecutiveErrors++;
+        
+        // 记录错误，如果是频率限制错误，大幅增加间隔
         if (error.message && error.message.includes('429')) {
-          this.minInterval = Math.min(this.minInterval * 1.5, 10000); // 最大10秒
-          console.log(`⚠️ 检测到频率限制，增加间隔到${this.minInterval/1000}秒`);
+          this.minInterval = Math.min(this.minInterval * 2, 30000); // 最大30秒（从10秒增加）
+          console.log(`⚠️ 检测到频率限制，大幅增加间隔到${this.minInterval/1000}秒`);
+          console.log(`🔴 连续错误次数: ${this.consecutiveErrors}`);
         }
+        
         reject(error);
       }
     }
@@ -474,8 +551,21 @@ class PayloadRateLimiter {
   
   // 重置间隔（在长时间没有错误后调用）
   resetInterval() {
-    this.minInterval = 2000;
-    console.log(`🔄 重置请求间隔到${this.minInterval/1000}秒`);
+    this.minInterval = 8000; // 从2000改为8000
+    this.consecutiveErrors = 0;
+    console.log(`🔄 重置请求间隔到${this.minInterval/1000}秒，清除错误计数`);
+  }
+  
+  // 获取当前状态
+  getStatus() {
+    return {
+      minInterval: this.minInterval,
+      consecutiveErrors: this.consecutiveErrors,
+      queueLength: this.queue.length,
+      processing: this.processing,
+      lastRequestTime: this.lastRequestTime,
+      nextAvailableTime: this.lastRequestTime + this.minInterval
+    };
   }
 }
 
@@ -496,18 +586,31 @@ async function callOpenAIChat(options, taskType = 'FAST_PROCESSING', retryCount 
   const accountConfig = selectedAccount.id === 'primary' ? 
     DUAL_ACCOUNT_CONFIG.PRIMARY : DUAL_ACCOUNT_CONFIG.SECONDARY;
   
+  // 🛡️ 强制等待机制 - 确保不会过于频繁调用
+  const waitTime = dualAccountBalancer.getWaitTimeRecommendation(selectedAccount.id);
+  if (waitTime > 0) {
+    console.log(`⏰ ${accountConfig.name}需要等待 ${waitTime/1000}秒 以避免频率限制...`);
+    await new Promise(resolve => setTimeout(resolve, waitTime));
+  }
+  
   // 使用智能请求队列（双账户优化）
   return rateLimiter.addRequest(async () => {
     try {
       // 🚀 超强重试策略：针对双账户系统的频率限制优化
       if (retryCount > 0) {
-        // 双账户重试延迟：根据账户类型调整
-        const baseDelayTimes = [10000, 30000, 60000, 120000, 240000, 480000, 600000, 900000];
-        const multiplier = selectedAccount.id === 'secondary' ? 0.5 : 1; // 免费账户等待时间减半
-        const delay = (baseDelayTimes[retryCount - 1] || 900000) * multiplier;
+        // 双账户重试延迟：根据账户类型和重试次数调整
+        const baseDelayTimes = [15000, 45000, 90000, 180000, 360000, 600000, 900000, 1200000];
+        let delay = baseDelayTimes[retryCount - 1] || 1200000;
+        
+        // 🎯 根据账户类型调整延迟
+        if (selectedAccount.id === 'secondary') {
+          // 免费账户需要更长等待时间
+          delay = delay * 1.5;
+        }
         
         console.log(`⏱️ ${accountConfig.name}频率限制重试延迟${delay/1000}秒 (第${retryCount}次重试)...`);
         console.log(`🎯 当前使用模型: ${options.model || 'unknown'} @ ${accountConfig.name}`);
+        console.log(`🔧 系统诊断:`, dualAccountBalancer.getDiagnostics());
         await new Promise(resolve => setTimeout(resolve, delay));
       }
 
@@ -1538,3 +1641,105 @@ class APIUsageController {
 
 // 创建全局API使用控制器
 const apiController = new APIUsageController();
+
+// 🔧 双账户系统诊断工具
+export async function diagnoseDualAccountSystem() {
+  console.log('🔧 开始双账户系统诊断...');
+  
+  try {
+    // 1. 检查后端状态
+    const statusResponse = await fetch(`${API_BASE_URL}/status`);
+    const statusData = await statusResponse.json();
+    
+    console.log('📊 后端双账户状态:', statusData.dualAccountSystem);
+    console.log('🔑 账户配置状态:', statusData.services.openai);
+    
+    // 2. 测试主账户
+    console.log('🧪 测试主账户连接...');
+    try {
+      const primaryTest = await callOpenAIChat({
+        model: 'gpt-3.5-turbo',
+        messages: [{ role: 'user', content: '测试连接，请回复"主账户正常"' }],
+        max_tokens: 10,
+        accountId: 'primary',
+        accountType: 'paid'
+      }, 'FAST_PROCESSING', 0, 1);
+      console.log('✅ 主账户测试成功:', primaryTest);
+    } catch (primaryError) {
+      console.log('❌ 主账户测试失败:', primaryError.message);
+    }
+    
+    // 3. 测试副账户
+    console.log('🧪 测试副账户连接...');
+    try {
+      const secondaryTest = await callOpenAIChat({
+        model: 'gpt-3.5-turbo',
+        messages: [{ role: 'user', content: '测试连接，请回复"副账户正常"' }],
+        max_tokens: 10,
+        accountId: 'secondary',
+        accountType: 'free'
+      }, 'FAST_PROCESSING', 0, 1);
+      console.log('✅ 副账户测试成功:', secondaryTest);
+    } catch (secondaryError) {
+      console.log('❌ 副账户测试失败:', secondaryError.message);
+    }
+    
+    // 4. 显示负载均衡器状态
+    const balancerStatus = dualAccountBalancer.getLoadStatus();
+    console.log('⚖️ 负载均衡器状态:', balancerStatus);
+    
+    // 5. 显示诊断信息
+    const diagnostics = dualAccountBalancer.getDiagnostics();
+    console.log('🔧 详细诊断信息:', diagnostics);
+    
+    return {
+      backendStatus: statusData,
+      balancerStatus: balancerStatus,
+      diagnostics: diagnostics,
+      timestamp: new Date().toISOString()
+    };
+    
+  } catch (error) {
+    console.error('🚨 双账户系统诊断失败:', error);
+    return { error: error.message };
+  }
+}
+
+// 🚀 强制使用副账户进行测试
+export async function forceTestSecondaryAccount() {
+  console.log('🔬 强制测试副账户...');
+  
+  try {
+    const response = await fetch(`${API_BASE_URL}/openai/chat`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'gpt-3.5-turbo',
+        messages: [{ 
+          role: 'user', 
+          content: '这是副账户测试，请简单回复"副账户工作正常"，不超过5个字。' 
+        }],
+        max_tokens: 10,
+        temperature: 0.1,
+        accountId: 'secondary',
+        accountType: 'free'
+      })
+    });
+    
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.log('❌ 副账户直接测试失败:', errorData);
+      return { success: false, error: errorData };
+    }
+    
+    const result = await response.json();
+    console.log('✅ 副账户直接测试成功:', result);
+    return { success: true, result: result };
+    
+  } catch (error) {
+    console.log('🚨 副账户直接测试异常:', error);
+    return { success: false, error: error.message };
+  }
+}
