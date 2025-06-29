@@ -61,9 +61,9 @@ export default function PreviewPage() {
           type: 'content',
           pageNumber: page.pageNumber,
           title: page.title,
-          content: page.content,
+          content: page.text || page.content, // 修复字段映射：text -> content
           sceneDescription: page.sceneDescription,
-          imageUrl: page.imageUrl, // DALL-E 3生成的图像URL
+          imageUrl: page.imageUrl, // LiblibAI生成的图像URL
           imagePrompt: page.imagePrompt, // 图像生成提示词
           fallbackEmoji: page.fallbackEmoji, // 备用emoji
           localImageUrl: generateLocalImage(page, characterData), // 本地生成的图像
@@ -183,7 +183,8 @@ export default function PreviewPage() {
       // 更新localStorage
       const generatedBook = JSON.parse(localStorage.getItem('generatedBook') || '{}');
       if (generatedBook.pages && generatedBook.pages[editingPageIndex - 1]) {
-        generatedBook.pages[editingPageIndex - 1].content = editedContent;
+        generatedBook.pages[editingPageIndex - 1].text = editedContent; // 修复：使用text字段
+        generatedBook.pages[editingPageIndex - 1].content = editedContent; // 兼容性保留
         localStorage.setItem('generatedBook', JSON.stringify(generatedBook));
       }
 
@@ -262,7 +263,8 @@ export default function PreviewPage() {
           if (result.newSceneDescription) {
             storedPage.sceneDescription = result.newSceneDescription;
           }
-          storedPage.content = updatedPageData.content; // 更新内容
+          storedPage.text = updatedPageData.content; // 更新文本内容
+          storedPage.content = updatedPageData.content; // 兼容性保留
           storedPage.regenerated = true;
           storedPage.regenerationMethod = result.method;
           localStorage.setItem('generatedBook', JSON.stringify(generatedBook));
@@ -348,7 +350,8 @@ export default function PreviewPage() {
           if (result.newSceneDescription) {
             storedPage.sceneDescription = result.newSceneDescription;
           }
-          storedPage.content = updatedPageData.content; // 更新内容
+          storedPage.text = updatedPageData.content; // 更新文本内容
+          storedPage.content = updatedPageData.content; // 兼容性保留
           storedPage.regenerated = true;
           storedPage.regenerationMethod = result.method;
           localStorage.setItem('generatedBook', JSON.stringify(generatedBook));
@@ -971,22 +974,14 @@ function ImageDisplay({ pageData, pageIndex, isOptimizing, onImageLoad, onOptimi
               </Button>
             </div>
           )}
-          
-          <div className="text-center mt-2 text-xs text-gray-500">
-            {imageState === 'success' 
-              ? `${pageData.imageEngine === 'liblibai' ? 'LiblibAI Kontext' : 'DALL-E 3'} 生成的插画${pageData.optimized ? ' (已优化)' : ''}`
-              : '本地生成的插画'
-            }
-          </div>
+
         </div>
       )}
 
       {imageState === 'failed' && (
         <div className="mb-6">
           <div className="text-6xl text-center">{pageData.fallbackEmoji || pageData.image}</div>
-          <div className="text-center mt-2 text-xs text-gray-500">
-            默认插图
-          </div>
+
         </div>
       )}
 
