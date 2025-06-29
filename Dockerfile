@@ -1,22 +1,20 @@
 FROM node:22-slim
 WORKDIR /app
 
-# 复制package文件
+# 先复制依赖文件并安装所有依赖（含dev）
 COPY package*.json ./
+RUN npm install      # 使用npm install确保所有依赖都被正确安装
 
-# 安装所有依赖（包括开发依赖，用于构建）
-RUN npm ci
-
-# 复制源代码（.dockerignore会排除node_modules和dist）
+# 再把所有文件复制进去
 COPY . .
 
-# 构建前端应用
+# 构建产物（此时dev依赖还在，可以调用vite打包）
 RUN npm run build
 
 # 验证dist目录是否存在
 RUN ls -la dist/
 
-# 清理开发依赖
+# 生产环境只保留纯production依赖
 RUN npm prune --production
 
 # 暴露端口
