@@ -418,7 +418,7 @@ export async function generatePictureBook({ character, story, content, onProgres
     // 选择合适的模型
     const modelName = TASK_MODEL_MAPPING['STORY_GENERATION'];
     const modelConfig = QWEN_MODELS[modelName];
-    const defaultImageEngine = imageEngine || 'liblib'; // 默认使用LiblibAI
+    const defaultImageEngine = imageEngine || 'liblibai'; // 默认使用LiblibAI
     
     // 构建提示词
     const prompt = buildPrompt({ character, story, content });
@@ -473,15 +473,33 @@ export async function generatePictureBook({ character, story, content, onProgres
     // 解析返回的JSON
     let parsedContent;
     try {
-      parsedContent = JSON.parse(generatedContent);
+      // 清理可能影响JSON解析的字符
+      let cleanContent = generatedContent;
+      
+      // 移除可能的markdown代码块标记
+      cleanContent = cleanContent.replace(/^```json\s*/i, '').replace(/\s*```$/, '');
+      cleanContent = cleanContent.replace(/^```\s*/, '').replace(/\s*```$/, '');
+      
+      // 尝试直接解析
+      parsedContent = JSON.parse(cleanContent);
     } catch (parseError) {
       console.error('JSON解析错误:', parseError);
+      console.log('原始内容:', generatedContent);
+      
       // 如果JSON解析失败，尝试提取JSON部分
       const jsonMatch = generatedContent.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
-        parsedContent = JSON.parse(jsonMatch[0]);
+        try {
+          let cleanJson = jsonMatch[0];
+          // 清理JSON中的反引号
+          cleanJson = cleanJson.replace(/`/g, '"');
+          parsedContent = JSON.parse(cleanJson);
+        } catch (secondError) {
+          console.error('二次JSON解析也失败:', secondError);
+          throw new Error(`无法解析通义千问返回的内容: ${parseError.message}`);
+        }
       } else {
-        throw new Error('无法解析通义千问返回的内容');
+        throw new Error('无法在响应中找到有效的JSON内容');
       }
     }
 
@@ -675,9 +693,11 @@ async function generateImagesForPages(pages, character, imageEngine, onProgress,
   if (useCharacterConsistency) {
     try {
       console.log('🎨 生成主角一致性形象...');
-      const masterResult = await generateMasterCharacterImage(character, imageEngine);
+      const masterResult = await generateMasterCharacterImage(character, (status, progress) => {
+        onProgress && onProgress(`生成主角形象: ${status}`, Math.min(progress || 0, 50));
+      });
       results.characterDefinition = masterResult.characterDefinition;
-      results.masterImageUrl = masterResult.imageUrl;
+      results.masterImageUrl = masterResult.masterImageUrl;  // 修正属性名
       console.log('✅ 主角形象生成完成');
     } catch (error) {
       console.warn('⚠️ 主角形象生成失败，将使用标准模式:', error);
@@ -695,19 +715,19 @@ async function generateImagesForPages(pages, character, imageEngine, onProgress,
       
       let imageUrl = null;
       
-      if (useCharacterConsistency && results.characterDefinition) {
+      if (useCharacterConsistency && results.characterDefinition && results.masterImageUrl) {
         // 使用角色一致性生成
         const result = await generateStoryIllustrationWithMaster(
           page.imagePrompt,
-          results.characterDefinition,
-          imageEngine
+          results.masterImageUrl,
+          results.characterDefinition
         );
         imageUrl = result.imageUrl;
       } else {
         // 使用标准方式生成
         const imagePrompt = buildLiblibImagePrompt(page, character);
         
-        if (imageEngine === 'liblib') {
+        if (imageEngine === 'liblibai') {
           const result = await generateTextToImageComplete(imagePrompt);
           imageUrl = result.imageUrl;
         } else {
