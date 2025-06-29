@@ -10,56 +10,56 @@ import {
 // 获取后端API地址 - 使用相对路径
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 
-// 🎯 多模型负载分散策略配置
+// 🎯 优化的OpenAI模型策略配置（专注GPT-4o和GPT-4）
 const MODEL_STRATEGY = {
   // 不同任务使用不同模型以分散负载
   TASKS: {
-    // 故事生成：使用GPT-3.5-turbo（更快、更便宜、频率限制更宽松）
+    // 故事生成：使用GPT-4（高质量创作）
     STORY_GENERATION: {
-      model: 'gpt-3.5-turbo',
+      model: 'gpt-4',
       maxTokens: 3000,
       temperature: 0.8,
-      description: '故事创作 - 使用GPT-3.5高性价比模型'
+      description: '故事创作 - 使用GPT-4保证质量'
     },
     
-    // 角色描述优化：使用GPT-3.5-turbo（足够智能，成本更低）
+    // 角色描述优化：使用GPT-4o（优化任务的最佳选择）
     CHARACTER_OPTIMIZATION: {
-      model: 'gpt-3.5-turbo',
+      model: 'gpt-4o',
       maxTokens: 150,
       temperature: 0.7,
-      description: '角色描述优化 - 使用GPT-3.5节约成本'
+      description: '角色描述优化 - 使用GPT-4o精准优化'
     },
     
-    // 翻译任务：使用GPT-3.5-turbo（翻译任务不需要最高级模型）
+    // 翻译任务：使用GPT-4o（快速准确翻译）
     TRANSLATION: {
-      model: 'gpt-3.5-turbo',
+      model: 'gpt-4o',
       maxTokens: 150,
       temperature: 0.3,
-      description: '文本翻译 - 使用GPT-3.5高效处理'
+      description: '文本翻译 - 使用GPT-4o确保准确'
     },
     
-    // 高质量创作：仅在用户明确需要时使用GPT-4
+    // 高质量创作：使用GPT-4
     HIGH_QUALITY: {
       model: 'gpt-4',
       maxTokens: 3000,
       temperature: 0.8,
-      description: '高质量创作 - 仅必要时使用GPT-4'
+      description: '高质量创作 - GPT-4顶级质量'
     },
     
-    // 快速处理：使用最快的模型
+    // 快速处理：使用GPT-4o
     FAST_PROCESSING: {
-      model: 'gpt-3.5-turbo',
+      model: 'gpt-4o',
       maxTokens: 500,
       temperature: 0.5,
-      description: '快速处理 - 优先速度和稳定性'
+      description: '快速处理 - GPT-4o高效响应'
     }
   },
   
-  // 图像生成策略：优先使用LiblibAI
+  // 图像生成策略：仅使用LiblibAI（移除DALL-E 3）
   IMAGE_STRATEGY: {
-    primary: 'liblibai',   // 主要使用LiblibAI（更快、更稳定、成本更低）
-    fallback: 'dalle3',    // 仅在LiblibAI失败时使用DALL-E 3
-    description: '图像生成 - 优先LiblibAI，降级DALL-E 3'
+    primary: 'liblibai',   // 主要使用LiblibAI
+    fallback: 'liblibai',  // 备用也是LiblibAI（移除DALL-E 3）
+    description: '图像生成 - 专用LiblibAI，移除DALL-E 3依赖'
   }
 };
 
@@ -133,13 +133,14 @@ class SmartModelSelector {
 // 创建全局的智能模型选择器
 const modelSelector = new SmartModelSelector();
 
-// 付费账户专用的智能请求队列
+// 🛡️ 超保守的智能请求队列 - 专门针对频率限制优化
 class PayloadRateLimiter {
   constructor() {
     this.queue = [];
     this.processing = false;
     this.lastRequestTime = 0;
-    this.minInterval = 100; // 付费账户：最小间隔100ms
+    this.minInterval = 2000; // 超保守：最小间隔2秒
+    this.recentErrors = new Map(); // 追踪最近的错误
   }
 
   async addRequest(requestFn) {
@@ -158,26 +159,42 @@ class PayloadRateLimiter {
       const { requestFn, resolve, reject } = this.queue.shift();
       
       try {
-        // 智能间隔控制
+        // 🛡️ 超保守的间隔控制
         const now = Date.now();
         const timeSinceLastRequest = now - this.lastRequestTime;
-        if (timeSinceLastRequest < this.minInterval) {
-          await new Promise(r => setTimeout(r, this.minInterval - timeSinceLastRequest));
+        const requiredWait = this.minInterval;
+        
+        if (timeSinceLastRequest < requiredWait) {
+          const waitTime = requiredWait - timeSinceLastRequest;
+          console.log(`⏱️ 请求队列等待${waitTime/1000}秒以避免频率限制...`);
+          await new Promise(r => setTimeout(r, waitTime));
         }
         
         const result = await requestFn();
         this.lastRequestTime = Date.now();
         resolve(result);
         
-        // 付费账户：短暂间隔
-        await new Promise(r => setTimeout(r, 50));
+        // 🛡️ 请求间额外间隔，防止连续请求
+        console.log(`✅ 请求完成，额外等待3秒...`);
+        await new Promise(r => setTimeout(r, 3000));
         
       } catch (error) {
+        // 记录错误，如果是频率限制错误，增加间隔
+        if (error.message && error.message.includes('429')) {
+          this.minInterval = Math.min(this.minInterval * 1.5, 10000); // 最大10秒
+          console.log(`⚠️ 检测到频率限制，增加间隔到${this.minInterval/1000}秒`);
+        }
         reject(error);
       }
     }
     
     this.processing = false;
+  }
+  
+  // 重置间隔（在长时间没有错误后调用）
+  resetInterval() {
+    this.minInterval = 2000;
+    console.log(`🔄 重置请求间隔到${this.minInterval/1000}秒`);
   }
 }
 
@@ -189,20 +206,19 @@ const rateLimiter = new PayloadRateLimiter();
  * @param {Object} options - 调用选项
  * @returns {Promise<Object>} API响应
  */
-async function callOpenAIChat(options, retryCount = 0, maxRetries = 6) {
+async function callOpenAIChat(options, retryCount = 0, maxRetries = 8) {
   // 使用智能请求队列（付费账户优化）
   return rateLimiter.addRequest(async () => {
     try {
-      // 智能延迟策略：第一次重试立即进行，后续递增
+      // 🚀 超强重试策略：针对GPT-4和GPT-4o的频率限制优化
       if (retryCount > 0) {
-        // 付费账户优化的重试延迟：0, 3, 6, 12, 24, 45秒
-        const delayTimes = [0, 3000, 6000, 12000, 24000, 45000];
-        const delay = delayTimes[retryCount - 1] || 60000;
+        // 更保守的重试延迟：10, 30, 60, 120, 240, 480, 600, 900秒
+        const delayTimes = [10000, 30000, 60000, 120000, 240000, 480000, 600000, 900000];
+        const delay = delayTimes[retryCount - 1] || 900000;
         
-        if (delay > 0) {
-          console.log(`⏱️ 智能重试延迟${delay/1000}秒...`);
-          await new Promise(resolve => setTimeout(resolve, delay));
-        }
+        console.log(`⏱️ 频率限制重试延迟${delay/1000}秒 (第${retryCount}次重试)...`);
+        console.log(`🎯 当前使用模型: ${options.model || 'unknown'}`);
+        await new Promise(resolve => setTimeout(resolve, delay));
       }
 
       const response = await fetch(`${API_BASE_URL}/openai/chat`, {
@@ -218,49 +234,44 @@ async function callOpenAIChat(options, retryCount = 0, maxRetries = 6) {
         
         // 处理429错误（频率限制）
         if (response.status === 429) {
-          console.warn(`⚠️ OpenAI API频率限制 (付费账户)，第${retryCount + 1}次重试...`);
+          console.warn(`⚠️ ${options.model || 'OpenAI'}模型频率限制，第${retryCount + 1}次重试...`);
           
-          // 🧠 记录模型被限频（智能模型选择器）
+          // 🧠 记录模型被限频
           const currentModel = options.model || 'unknown';
           modelSelector.recordRateLimit(currentModel);
           
           if (retryCount < maxRetries) {
-            // 付费账户的智能重试策略
-            // 等待时间：5, 10, 20, 40, 80, 120秒
-            const waitTimes = [5, 10, 20, 40, 80, 120];
-            const waitTime = (waitTimes[retryCount] || 120) * 1000;
+            console.log(`🔄 执行第${retryCount + 1}/${maxRetries}次重试...`);
+            console.log(`📊 预计等待时间: ${retryCount < 7 ? [10, 30, 60, 120, 240, 480, 600][retryCount] : 900}秒`);
             
-            console.log(`🔄 付费账户快速重试，等待${waitTime/1000}秒...`);
-            console.log(`📊 重试进度: ${retryCount + 1}/${maxRetries}`);
-            
-            // 检查是否是特定的频率限制类型
+            // 检查错误详情
             const errorMessage = String(error.error || error.message || '');
             if (errorMessage.includes('rate_limit_exceeded')) {
-              console.log(`🎯 检测到速率限制，应用优化策略...`);
+              console.log(`🎯 确认为频率限制错误，继续重试...`);
             }
             
-            await new Promise(resolve => setTimeout(resolve, waitTime));
             return callOpenAIChat(options, retryCount + 1, maxRetries);
           } else {
-            throw new Error(`OpenAI API频率限制：付费账户经过${maxRetries}次快速重试仍失败。
+            throw new Error(`OpenAI API频率限制：${options.model || 'unknown'}模型经过${maxRetries}次重试仍失败。
 
-🔍 付费账户频率限制分析：
-• 即使是付费账户，短时间内大量请求仍可能触发限制
-• 当前限制：GPT-4 (500 RPM), GPT-4o (5000 RPM), DALL-E 3 (7 images/min)
-• 系统已进行${maxRetries}次智能重试（总耗时约3-4分钟）
+🔍 频率限制详细分析：
+• 模型：${options.model || 'unknown'}
+• 付费账户限制：GPT-4 (500 RPM), GPT-4o (5000 RPM)
+• 总重试时间：约${Math.round((10+30+60+120+240+480+600+900)/60)}分钟
+• 重试策略：递增延迟，最大化成功率
 
-💡 建议解决方案：
-1. 立即重试：通常在2-3分钟后恢复正常
-2. 检查并发：确保没有多个标签页同时生成
-3. 升级限制：联系OpenAI申请更高的频率限制
-4. 分批处理：考虑分批生成多页内容
+💡 立即解决方案：
+1. 🕐 等待10-15分钟后重试（推荐）
+2. 🔄 检查是否有其他标签页在同时生成
+3. 📞 联系OpenAI申请更高频率限制
+4. ⏰ 错开使用高峰时段
 
-🚀 付费账户优势：
-• 更高的基础频率限制
-• 更快的恢复速度
-• 优先处理权
+🚀 付费账户建议：
+• 考虑升级到更高tier的API计划
+• 联系OpenAI客服申请enterprise级别限制
+• 避开美国工作时间使用
 
-请稍等2-3分钟后重试，或联系技术支持。`);
+系统将在下次重试时继续优化策略。`);
           }
         }
         
@@ -268,15 +279,15 @@ async function callOpenAIChat(options, retryCount = 0, maxRetries = 6) {
         throw new Error(error.error || `HTTP ${response.status}: ${response.statusText}`);
       }
 
-      console.log(`✅ OpenAI API调用成功 (付费账户, ${retryCount}次重试)`);
+      console.log(`✅ ${options.model || 'OpenAI'}模型调用成功 (经过${retryCount}次重试)`);
       return await response.json();
     } catch (error) {
-      console.error('OpenAI Chat API调用失败:', error);
+      console.error(`${options.model || 'OpenAI'}模型调用失败:`, error);
       
-      // 网络错误的快速重试（付费账户优化）
+      // 网络错误的重试（更保守策略）
       if (retryCount < maxRetries && (error.name === 'TypeError' || error.message.includes('fetch'))) {
-        console.warn(`🌐 网络错误，付费账户快速重试 ${retryCount + 1}/${maxRetries}...`);
-        const waitTime = Math.min(5000 * (retryCount + 1), 30000); // 5, 10, 15, 20, 25, 30秒
+        console.warn(`🌐 网络错误，第${retryCount + 1}/${maxRetries}次重试...`);
+        const waitTime = Math.min(10000 * (retryCount + 1), 60000); // 10, 20, 30, 40, 50, 60秒
         console.log(`⏱️ 网络重试等待${waitTime/1000}秒...`);
         await new Promise(resolve => setTimeout(resolve, waitTime));
         return callOpenAIChat(options, retryCount + 1, maxRetries);
@@ -287,32 +298,7 @@ async function callOpenAIChat(options, retryCount = 0, maxRetries = 6) {
   });
 }
 
-/**
- * 通过后端代理调用DALL-E API
- * @param {Object} options - 调用选项
- * @returns {Promise<Object>} API响应
- */
-async function callOpenAIImages(options) {
-  try {
-    const response = await fetch(`${API_BASE_URL}/openai/images`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(options)
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || `HTTP ${response.status}: ${response.statusText}`);
-    }
-
-    return await response.json();
-  } catch (error) {
-    console.error('DALL-E API代理调用失败:', error);
-    throw error;
-  }
-}
+// 🚫 DALL-E 3功能已移除 - 专注使用LiblibAI进行图像生成
 
 /**
  * 使用GPT-4o优化角色描述为图像生成关键词
@@ -907,19 +893,32 @@ async function generateImagesForPages(pages, character, imageEngine, onProgress,
           }
         }
       } else {
-        // 使用DALL-E 3生成图像
-        imagePrompt = buildImagePrompt(page, character);
-        console.log(`DALL-E 3图像提示词:`, imagePrompt);
+        // 🚫 DALL-E 3已移除 - 使用LiblibAI备用方案
+        console.log(`🔄 DALL-E 3功能已移除，使用LiblibAI备用方案...`);
+        imagePrompt = buildLiblibImagePrompt(page, character);
+        
+        const liblibResult = await generateTextToImageComplete(
+          imagePrompt,
+          (status, progress) => {
+            console.log(`LiblibAI备用生成进度: ${status} - ${progress}%`);
+          },
+          {
+            aspectRatio: "3:4",
+            guidance_scale: 3.5,
+            imgCount: 1,
+            model: "pro"
+          }
+        );
 
-        const imageResponse = await callOpenAIImages({
-          prompt: imagePrompt,
-          size: "1024x1024",
-          quality: "standard",
-          n: 1
-        });
-
-        imageUrl = imageResponse.data[0].url;
-        console.log(`第${page.pageNumber}页DALL-E 3插画生成成功:`, imageUrl);
+        if (liblibResult && liblibResult.status === 'success' && liblibResult.imageUrl) {
+          imageUrl = liblibResult.imageUrl;
+          console.log(`第${page.pageNumber}页LiblibAI备用插画生成成功:`, imageUrl);
+        } else if (liblibResult && liblibResult.images && liblibResult.images.length > 0) {
+          imageUrl = liblibResult.images[0].imageUrl || liblibResult.images[0];
+          console.log(`第${page.pageNumber}页LiblibAI备用插画生成成功（备用方式）:`, imageUrl);
+        } else {
+          console.warn(`第${page.pageNumber}页LiblibAI备用插画生成失败，使用emoji替代`, liblibResult);
+        }
       }
 
       const pageWithImage = {
@@ -967,41 +966,7 @@ async function generateImagesForPages(pages, character, imageEngine, onProgress,
   return result;
 }
 
-/**
- * 构建DALL-E 3图像生成提示词
- * @param {Object} page - 页面内容
- * @param {Object} character - 角色信息
- * @returns {string} 图像生成提示词
- */
-function buildImagePrompt(page, character) {
-  // 从场景描述中提取情绪、动作和环境信息
-  const sceneInfo = extractSceneInfo(page.sceneDescription || '');
-  
-  // 获取角色的详细描述，确保一致性
-  const characterDescription = generateCharacterDescription(character);
-  const characterName = character.name || '主角';
-
-  // 构建强调角色一致性和内容对应的提示词
-  const consistencyPrompt = `IMPORTANT: Character consistency - The character ${characterName} must have exactly these features throughout: ${characterDescription}. `;
-  
-  // 构建内容对应的提示词
-  const contentPrompt = `Scene must precisely match this story content: "${page.content || ''}". `;
-  
-  // 使用专业的自闭症友好关键词模块生成基础提示词
-  const basePrompt = generateAutismFriendlyPrompt({
-    character: character,
-    sceneDescription: page.sceneDescription || 'A simple scene',
-    emotion: sceneInfo.emotion,
-    action: sceneInfo.action,
-    environment: sceneInfo.environment
-  });
-
-  // 组合最终提示词，强调一致性和对应性
-  const finalPrompt = `${consistencyPrompt}${contentPrompt}${basePrompt}. Children's book illustration style, clear character features, consistent appearance, educational scene, appropriate for autism-friendly design.`;
-
-  console.log(`第${page.pageNumber}页DALL-E 3提示词:`, finalPrompt);
-  return finalPrompt;
-}
+// 🚫 buildImagePrompt函数已移除 - DALL-E 3功能不再使用
 
 /**
  * 构建LiblibAI图像生成提示词
