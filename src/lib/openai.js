@@ -10,6 +10,129 @@ import {
 // 获取后端API地址 - 使用相对路径
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 
+// 🎯 多模型负载分散策略配置
+const MODEL_STRATEGY = {
+  // 不同任务使用不同模型以分散负载
+  TASKS: {
+    // 故事生成：使用GPT-3.5-turbo（更快、更便宜、频率限制更宽松）
+    STORY_GENERATION: {
+      model: 'gpt-3.5-turbo',
+      maxTokens: 3000,
+      temperature: 0.8,
+      description: '故事创作 - 使用GPT-3.5高性价比模型'
+    },
+    
+    // 角色描述优化：使用GPT-3.5-turbo（足够智能，成本更低）
+    CHARACTER_OPTIMIZATION: {
+      model: 'gpt-3.5-turbo',
+      maxTokens: 150,
+      temperature: 0.7,
+      description: '角色描述优化 - 使用GPT-3.5节约成本'
+    },
+    
+    // 翻译任务：使用GPT-3.5-turbo（翻译任务不需要最高级模型）
+    TRANSLATION: {
+      model: 'gpt-3.5-turbo',
+      maxTokens: 150,
+      temperature: 0.3,
+      description: '文本翻译 - 使用GPT-3.5高效处理'
+    },
+    
+    // 高质量创作：仅在用户明确需要时使用GPT-4
+    HIGH_QUALITY: {
+      model: 'gpt-4',
+      maxTokens: 3000,
+      temperature: 0.8,
+      description: '高质量创作 - 仅必要时使用GPT-4'
+    },
+    
+    // 快速处理：使用最快的模型
+    FAST_PROCESSING: {
+      model: 'gpt-3.5-turbo',
+      maxTokens: 500,
+      temperature: 0.5,
+      description: '快速处理 - 优先速度和稳定性'
+    }
+  },
+  
+  // 图像生成策略：优先使用LiblibAI
+  IMAGE_STRATEGY: {
+    primary: 'liblibai',   // 主要使用LiblibAI（更快、更稳定、成本更低）
+    fallback: 'dalle3',    // 仅在LiblibAI失败时使用DALL-E 3
+    description: '图像生成 - 优先LiblibAI，降级DALL-E 3'
+  }
+};
+
+/**
+ * 🧠 智能模型选择器
+ * 根据任务类型和当前负载状况选择最佳模型
+ */
+class SmartModelSelector {
+  constructor() {
+    this.modelUsage = new Map(); // 追踪各模型使用情况
+    this.lastRateLimitTime = new Map(); // 记录各模型上次限频时间
+  }
+  
+  /**
+   * 获取指定任务的最佳模型配置
+   * @param {string} taskType - 任务类型
+   * @param {Object} options - 额外选项
+   * @returns {Object} 模型配置
+   */
+  getModelConfig(taskType, options = {}) {
+    const config = MODEL_STRATEGY.TASKS[taskType] || MODEL_STRATEGY.TASKS.FAST_PROCESSING;
+    
+    // 检查是否最近被限频
+    const lastLimitTime = this.lastRateLimitTime.get(config.model);
+    const timeSinceLimit = lastLimitTime ? Date.now() - lastLimitTime : Infinity;
+    
+    // 如果主模型最近被限频，使用备用策略
+    if (timeSinceLimit < 300000) { // 5分钟内被限频
+      console.log(`🔄 ${config.model}最近被限频，切换到备用模型...`);
+      return this.getFallbackConfig(taskType);
+    }
+    
+    console.log(`🎯 任务"${taskType}"使用模型: ${config.model} (${config.description})`);
+    return config;
+  }
+  
+  /**
+   * 获取备用模型配置
+   */
+  getFallbackConfig(taskType) {
+    // 对于所有任务，备用方案都是使用GPT-3.5-turbo
+    const fallbackConfig = {
+      model: 'gpt-3.5-turbo',
+      maxTokens: MODEL_STRATEGY.TASKS[taskType]?.maxTokens || 500,
+      temperature: 0.7,
+      description: '备用模型 - 避免频率限制'
+    };
+    
+    console.log(`🛡️ 使用备用模型: ${fallbackConfig.model}`);
+    return fallbackConfig;
+  }
+  
+  /**
+   * 记录模型被限频
+   */
+  recordRateLimit(modelName) {
+    this.lastRateLimitTime.set(modelName, Date.now());
+    console.log(`⚠️ 记录${modelName}被限频，将在5分钟后重新尝试`);
+  }
+  
+  /**
+   * 获取推荐的图像生成引擎
+   */
+  getImageEngine() {
+    const strategy = MODEL_STRATEGY.IMAGE_STRATEGY;
+    console.log(`🖼️ 推荐图像引擎: ${strategy.primary} (${strategy.description})`);
+    return strategy.primary;
+  }
+}
+
+// 创建全局的智能模型选择器
+const modelSelector = new SmartModelSelector();
+
 // 付费账户专用的智能请求队列
 class PayloadRateLimiter {
   constructor() {
@@ -97,6 +220,10 @@ async function callOpenAIChat(options, retryCount = 0, maxRetries = 6) {
         if (response.status === 429) {
           console.warn(`⚠️ OpenAI API频率限制 (付费账户)，第${retryCount + 1}次重试...`);
           
+          // 🧠 记录模型被限频（智能模型选择器）
+          const currentModel = options.model || 'unknown';
+          modelSelector.recordRateLimit(currentModel);
+          
           if (retryCount < maxRetries) {
             // 付费账户的智能重试策略
             // 等待时间：5, 10, 20, 40, 80, 120秒
@@ -107,7 +234,7 @@ async function callOpenAIChat(options, retryCount = 0, maxRetries = 6) {
             console.log(`📊 重试进度: ${retryCount + 1}/${maxRetries}`);
             
             // 检查是否是特定的频率限制类型
-            const errorMessage = error.error || '';
+            const errorMessage = String(error.error || error.message || '');
             if (errorMessage.includes('rate_limit_exceeded')) {
               console.log(`🎯 检测到速率限制，应用优化策略...`);
             }
@@ -197,6 +324,9 @@ export async function optimizeCharacterDescription(userDescription, basicInfo = 
   try {
     const { age = 6, gender = 'any', identity = 'human' } = basicInfo;
     
+    // 🎯 使用智能模型选择器 - 角色描述优化使用GPT-3.5-turbo
+    const modelConfig = modelSelector.getModelConfig('CHARACTER_OPTIMIZATION');
+    
     const systemPrompt = `你是一个专业的角色设计专家，擅长创造简洁但完整的角色形象描述。
 
 **核心任务**：
@@ -256,7 +386,7 @@ export async function optimizeCharacterDescription(userDescription, basicInfo = 
 請严格按照用户输入的语言来回复！`;
 
     const response = await callOpenAIChat({
-      model: "gpt-4o",
+      model: modelConfig.model,
       messages: [
         {
           role: "system",
@@ -267,12 +397,12 @@ export async function optimizeCharacterDescription(userDescription, basicInfo = 
           content: userPrompt
         }
       ],
-      temperature: 0.7,
-      max_tokens: 150
+      temperature: modelConfig.temperature,
+      max_tokens: modelConfig.maxTokens
     });
 
     const optimizedDescription = response.choices[0].message.content.trim();
-    console.log('角色形象智能完善完成:', { 
+    console.log('✅ 角色形象智能完善完成 (使用' + modelConfig.model + '):', { 
       original: userDescription, 
       enhanced: optimizedDescription 
     });
@@ -335,8 +465,11 @@ export async function translateDescriptionToEnglish(description, basicInfo = {})
 
 请直接返回英文翻译，不需要解释：`;
 
+    // 🎯 使用智能模型选择器 - 翻译任务使用GPT-3.5-turbo
+    const modelConfig = modelSelector.getModelConfig('TRANSLATION');
+    
     const response = await callOpenAIChat({
-      model: "gpt-4o",
+      model: modelConfig.model,
       messages: [
         {
           role: "system",
@@ -347,12 +480,12 @@ export async function translateDescriptionToEnglish(description, basicInfo = {})
           content: userPrompt
         }
       ],
-      temperature: 0.3, // 降低随机性，确保翻译准确
-      max_tokens: 150
+      temperature: modelConfig.temperature,
+      max_tokens: modelConfig.maxTokens
     });
 
     const englishDescription = response.choices[0].message.content.trim();
-    console.log('🔤 描述翻译为英文:', { 
+    console.log('✅ 描述翻译为英文 (使用' + modelConfig.model + '):', { 
       original: description, 
       english: englishDescription 
     });
@@ -377,19 +510,24 @@ export async function translateDescriptionToEnglish(description, basicInfo = {})
  * @param {boolean} params.useCharacterConsistency - 是否使用角色一致性功能
  * @returns {Promise<Object>} 生成的绘本内容
  */
-export async function generatePictureBook({ character, story, content, onProgress, imageEngine = 'dalle3', useCharacterConsistency = true }) {
+export async function generatePictureBook({ character, story, content, onProgress, imageEngine, useCharacterConsistency = true }) {
   try {
+    // 🎯 智能模型和引擎选择
+    const modelConfig = modelSelector.getModelConfig('STORY_GENERATION');
+    const defaultImageEngine = imageEngine || modelSelector.getImageEngine(); // 优先使用LiblibAI
+    
     // 构建提示词
     const prompt = buildPrompt({ character, story, content });
 
-    console.log('发送到OpenAI的提示词:', prompt);
-    console.log('使用的图像生成引擎:', imageEngine);
-    console.log('教学内容模式:', content.mode || 'unknown');
-    console.log('最终教学主题:', content.educationalTopic || content.finalTopic);
-    onProgress && onProgress('正在构建故事提示词...', 10);
+    console.log('🧠 智能模型选择结果:');
+    console.log('- 故事生成模型:', modelConfig.model, '(' + modelConfig.description + ')');
+    console.log('- 图像生成引擎:', defaultImageEngine);
+    console.log('- 教学内容模式:', content.mode || 'unknown');
+    console.log('- 最终教学主题:', content.educationalTopic || content.finalTopic);
+    onProgress && onProgress('正在使用智能模型生成故事...', 10);
     
     const response = await callOpenAIChat({
-      model: "gpt-4",
+      model: modelConfig.model,
       messages: [
         {
           role: "system",
@@ -421,8 +559,8 @@ export async function generatePictureBook({ character, story, content, onProgres
           content: prompt
         }
       ],
-      temperature: 0.8,
-      max_tokens: 3000
+      temperature: modelConfig.temperature,
+      max_tokens: modelConfig.maxTokens
     });
 
     const generatedContent = response.choices[0].message.content;
@@ -451,7 +589,7 @@ export async function generatePictureBook({ character, story, content, onProgres
     const imageResult = await generateImagesForPages(
       parsedContent.pages,
       character,
-      imageEngine,
+      defaultImageEngine,
       (current, total) => {
         const imageProgress = 60 + (current / total) * 35; // 60-95%
         onProgress && onProgress(`正在生成第${current}/${total}页插画...`, imageProgress);
@@ -464,7 +602,8 @@ export async function generatePictureBook({ character, story, content, onProgres
     return {
       ...parsedContent,
       pages: imageResult.pages,
-      imageEngine: imageEngine, // 记录使用的图像引擎
+      imageEngine: defaultImageEngine, // 记录使用的图像引擎
+      storyModel: modelConfig.model, // 记录使用的故事生成模型
       characterConsistency: useCharacterConsistency, // 记录是否使用角色一致性
       characterDefinition: imageResult.characterDefinition || null,
       masterImageUrl: imageResult.masterImageUrl || null, // 添加主角形象图URL
