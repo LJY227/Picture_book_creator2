@@ -656,14 +656,68 @@ export default function PreviewPage() {
             )}
 
             {currentPageData.type === 'ending' && (
-              <div className="space-y-4 sm:space-y-6">
+              <div className="space-y-4 sm:space-y-6 w-full max-w-4xl">
                 <div className="text-6xl sm:text-8xl mb-4 sm:mb-6">{currentPageData.image}</div>
                 <h2 className="text-2xl sm:text-3xl font-bold text-gray-800 mb-3 sm:mb-4 px-4">
                   {currentPageData.title}
                 </h2>
-                <p className="text-base sm:text-xl text-gray-600 max-w-sm sm:max-w-md px-4">
+                <p className="text-base sm:text-xl text-gray-600 max-w-sm sm:max-w-md px-4 mx-auto">
                   {currentPageData.content}
                 </p>
+
+                {/* 教育价值总结 */}
+                {(() => {
+                  const generatedBook = JSON.parse(localStorage.getItem('generatedBook') || '{}');
+                  if (!generatedBook.educationalValue) return null;
+                  
+                  return (
+                    <div className="mt-8 bg-gradient-to-r from-blue-50 to-purple-50 rounded-2xl p-6 mx-4 text-left">
+                      <div className="mb-6">
+                        <h3 className="text-lg sm:text-xl font-bold text-gray-800 mb-3 flex items-center">
+                          <span className="text-2xl mr-2">🎓</span>
+                          教育价值
+                        </h3>
+                        <p className="text-sm sm:text-base text-gray-700 leading-relaxed">
+                          {generatedBook.educationalValue}
+                        </p>
+                      </div>
+
+                      {generatedBook.teachingPoints && generatedBook.teachingPoints.length > 0 && (
+                        <div className="mb-6">
+                          <h4 className="text-base sm:text-lg font-semibold text-gray-800 mb-3 flex items-center">
+                            <span className="text-xl mr-2">💡</span>
+                            学习要点
+                          </h4>
+                          <ul className="space-y-2">
+                            {generatedBook.teachingPoints.map((point, index) => (
+                              <li key={index} className="flex items-start text-sm sm:text-base text-gray-700">
+                                <span className="text-blue-500 mr-2 mt-1 flex-shrink-0">•</span>
+                                <span>{point}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+
+                      {generatedBook.discussionQuestions && generatedBook.discussionQuestions.length > 0 && (
+                        <div>
+                          <h4 className="text-base sm:text-lg font-semibold text-gray-800 mb-3 flex items-center">
+                            <span className="text-xl mr-2">❓</span>
+                            讨论问题
+                          </h4>
+                          <ul className="space-y-3">
+                            {generatedBook.discussionQuestions.map((question, index) => (
+                              <li key={index} className="flex items-start text-sm sm:text-base text-gray-700">
+                                <span className="text-purple-500 mr-2 mt-1 flex-shrink-0 font-semibold">{index + 1}.</span>
+                                <span>{question}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
             )}
           </div>
