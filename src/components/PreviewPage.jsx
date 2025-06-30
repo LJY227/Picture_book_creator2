@@ -796,12 +796,8 @@ export default function PreviewPage() {
                 <div className="bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs">
                   通义千问 故事创作
                 </div>
-                <div className={`px-2 py-1 rounded text-xs ${
-                  bookData.pages[0]?.imageEngine === 'liblibai' 
-                    ? 'bg-green-100 text-green-800' 
-                    : 'bg-purple-100 text-purple-800'
-                }`}>
-                  {bookData.pages[0]?.imageEngine === 'liblibai' ? 'LiblibAI Kontext' : 'DALL-E 3'} 插画生成
+                <div className="bg-green-100 text-green-800 px-2 py-1 rounded text-xs">
+                  LiblibAI Kontext 插画生成
                 </div>
                 {bookData.pages[0]?.characterConsistency && (
                   <div className="bg-orange-100 text-orange-800 px-2 py-1 rounded text-xs">

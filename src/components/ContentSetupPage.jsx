@@ -3,8 +3,8 @@ import { Button } from '@/components/ui/button.jsx'
 import { Label } from '@/components/ui/label.jsx'
 import { Textarea } from '@/components/ui/textarea.jsx'
 import { Switch } from '@/components/ui/switch.jsx'
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group.jsx'
-import { ArrowLeft, Sparkles, GraduationCap, Loader2, Zap, Palette, Settings, Edit3, CheckCircle } from 'lucide-react'
+
+import { ArrowLeft, Sparkles, GraduationCap, Loader2, Zap, Settings, Edit3, CheckCircle } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { generatePictureBook } from '@/lib/qwen.js'
 
@@ -228,7 +228,7 @@ export default function ContentSetupPage() {
             <div className={`flex items-center space-x-2 ${generationProgress >= 60 ? 'text-green-600' : 'text-gray-400'}`}>
               <div className={`w-2 h-2 rounded-full ${generationProgress >= 60 ? 'bg-green-500' : 'bg-gray-300'}`}></div>
               <span className="text-sm">
-                {contentData.imageEngine === 'liblibai' ? 'LiblibAI' : 'DALL-E 3'} 插画生成
+                LiblibAI 插画生成
               </span>
             </div>
             <div className={`flex items-center space-x-2 ${generationProgress >= 100 ? 'text-green-600' : 'text-gray-400'}`}>
@@ -280,7 +280,7 @@ export default function ContentSetupPage() {
           )}
 
           <div className="mt-6 text-xs text-gray-400">
-            ⚡ 使用 通义千问 + {contentData.imageEngine === 'liblibai' ? 'LiblibAI Kontext' : 'DALL-E 3'} 技术驱动
+            ⚡ 使用 通义千问 + LiblibAI Kontext 技术驱动
           </div>
         </div>
       </div>
@@ -310,59 +310,24 @@ export default function ContentSetupPage() {
       {/* 主要内容 */}
       <div className="max-w-2xl mx-auto px-4 sm:px-6 py-6 sm:py-12 pb-24 sm:pb-32">
         <div className="space-y-6 sm:space-y-8">
-          {/* 默认随机生成说明 */}
-          <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-2xl p-6 border border-blue-100">
-            <div className="flex items-start">
-              <Sparkles className="w-6 h-6 text-blue-500 mr-3 mt-1 flex-shrink-0" />
-              <div>
-                <h3 className="text-lg font-medium text-gray-800 mb-2">智能教学内容生成</h3>
-                <p className="text-gray-600 text-sm leading-relaxed mb-3">
-                  系统将根据您设定的角色和故事类型，自动生成适合的教学内容。
-                  我们的AI会确保内容既有趣又富有教育意义，帮助孩子在阅读中学习和成长。
-                </p>
-                <div className="flex items-center space-x-2">
-                  <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                  <span className="text-sm font-medium text-blue-800">{getSelectionStatus()}</span>
-                </div>
-              </div>
-            </div>
-          </div>
 
-          {/* 图像生成引擎选择 */}
+
+          {/* 图像生成引擎信息 */}
           <div className="space-y-4">
             <Label className="text-base font-medium text-gray-700">图像生成引擎</Label>
-            <RadioGroup
-              value={contentData.imageEngine}
-              onValueChange={(value) => setContentData(prev => ({ ...prev, imageEngine: value }))}
-              className="space-y-3"
-            >
-              <div className="flex items-center space-x-3 p-4 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors">
-                <RadioGroupItem value="liblibai" id="liblibai" />
-                <div className="flex-1">
-                  <Label htmlFor="liblibai" className="text-base font-medium cursor-pointer flex items-center">
-                    <Zap className="w-4 h-4 mr-2 text-blue-500" />
-                    LiblibAI Kontext
-                    <span className="ml-2 px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full">推荐</span>
-                  </Label>
-                  <p className="text-sm text-gray-500 mt-1">
-                    专业的中文AI绘画模型，生成速度快，成本更低，特别适合儿童插画
-                  </p>
+            <div className="flex items-center space-x-3 p-4 border border-green-200 rounded-xl bg-green-50">
+              <div className="w-4 h-4 bg-green-500 rounded-full flex-shrink-0"></div>
+              <div className="flex-1">
+                <div className="text-base font-medium flex items-center">
+                  <Zap className="w-4 h-4 mr-2 text-blue-500" />
+                  LiblibAI Kontext
+                  <span className="ml-2 px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full">已启用</span>
                 </div>
+                <p className="text-sm text-gray-600 mt-1">
+                  专业的中文AI绘画模型，生成速度快，成本更低，特别适合儿童插画
+                </p>
               </div>
-              <div className="flex items-center space-x-3 p-4 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors">
-                <RadioGroupItem value="dalle3" id="dalle3" />
-                <div className="flex-1">
-                  <Label htmlFor="dalle3" className="text-base font-medium cursor-pointer flex items-center">
-                    <Palette className="w-4 h-4 mr-2 text-purple-500" />
-                    DALL-E 3
-                    <span className="ml-2 px-2 py-1 bg-purple-100 text-purple-800 text-xs rounded-full">高质量</span>
-                  </Label>
-                  <p className="text-sm text-gray-500 mt-1">
-                    OpenAI的图像生成模型，画质精美，细节丰富
-                  </p>
-                </div>
-              </div>
-            </RadioGroup>
+            </div>
           </div>
 
           {/* 自定义教学内容开关 - 重新设计为更明显的样式 */}

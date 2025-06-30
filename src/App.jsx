@@ -6,7 +6,7 @@ import ContentSetupPage from './components/ContentSetupPage.jsx'
 import PreviewPage from './components/PreviewPage.jsx'
 import DebugPage from './components/DebugPage.jsx'
 import ImageTestPage from './components/ImageTestPage.jsx'
-import KeywordTestPage from './components/KeywordTestPage.jsx'
+
 import LiblibTestPage from './components/LiblibTestPage.jsx'
 import './App.css'
 
@@ -22,7 +22,7 @@ function App() {
           <Route path="/preview" element={<PreviewPage />} />
           <Route path="/debug" element={<DebugPage />} />
           <Route path="/image-test" element={<ImageTestPage />} />
-          <Route path="/keyword-test" element={<KeywordTestPage />} />
+
           <Route path="/liblib-test" element={<LiblibTestPage />} />
         </Routes>
       </div>
