@@ -10,6 +10,115 @@ import {
 // 获取后端API地址 - 使用相对路径
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 
+/**
+ * 专门的JSON清理函数，处理通义千问返回的各种格式问题
+ * @param {string} jsonString - 需要清理的JSON字符串
+ * @returns {string} 清理后的JSON字符串
+ */
+export function cleanJsonString(jsonString) {
+  return jsonString
+    // 移除markdown代码块标记
+    .replace(/^```json\s*/i, '').replace(/\s*```$/, '')
+    .replace(/^```\s*/, '').replace(/\s*```$/, '')
+    // 替换各种引号
+    .replace(/`/g, '"')                    // 反引号替换为双引号
+    .replace(/'/g, '"')                    // 单引号替换为双引号
+    .replace(/[\u2018\u2019]/g, '"')       // 智能引号替换
+    .replace(/[\u201C\u201D]/g, '"')       // 智能双引号替换
+    .replace(/[\u201A\u201E]/g, '"')       // 其他智能引号
+    // 清理换行和制表符
+    .replace(/\n\s*\n/g, '\n')             // 清理多余换行
+    .replace(/\t/g, ' ')                   // 制表符替换为空格
+    .replace(/\r/g, '')                    // 清理回车符
+    // 清理控制字符
+    .replace(/[\u0000-\u001F\u007F-\u009F]/g, '')  // 清理控制字符
+    // 清理多余的逗号
+    .replace(/,\s*}/g, '}')                // 清理结尾多余逗号
+    .replace(/,\s*]/g, ']')                // 清理数组结尾多余逗号
+    // 清理多余的空格
+    .replace(/\s+/g, ' ')                  // 多个空格替换为单个空格
+    .trim();
+}
+
+/**
+ * 高级JSON解析函数，能够处理各种格式问题
+ * @param {string} content - 要解析的内容
+ * @returns {Object} 解析后的JSON对象
+ */
+export function parseJsonContent(content) {
+  // 首先尝试直接解析清理后的内容
+  try {
+    const cleanedContent = cleanJsonString(content);
+    return JSON.parse(cleanedContent);
+  } catch (error) {
+    console.log('直接解析失败，尝试提取JSON结构...');
+  }
+
+  // 方法1：寻找最完整的JSON结构
+  const jsonMatches = content.match(/\{[\s\S]*\}/g);
+  if (jsonMatches && jsonMatches.length > 0) {
+    for (const match of jsonMatches.sort((a, b) => b.length - a.length)) {
+      try {
+        const cleanedMatch = cleanJsonString(match);
+        return JSON.parse(cleanedMatch);
+      } catch (error) {
+        console.log(`匹配项解析失败，尝试下一个: ${error.message}`);
+        continue;
+      }
+    }
+  }
+
+  // 方法2：从第一个{到最后一个}
+  const startIdx = content.indexOf('{');
+  const endIdx = content.lastIndexOf('}');
+  
+  if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
+    try {
+      const extractedJson = content.substring(startIdx, endIdx + 1);
+      const cleanedExtracted = cleanJsonString(extractedJson);
+      return JSON.parse(cleanedExtracted);
+    } catch (error) {
+      console.log(`提取内容解析失败: ${error.message}`);
+    }
+  }
+
+  // 方法3：尝试修复常见的JSON格式问题
+  try {
+    let fixedContent = content;
+    
+    // 查找可能的JSON开始和结束
+    const jsonStart = fixedContent.search(/\{[\s\S]*"[^"]*"[\s\S]*:/);
+    if (jsonStart !== -1) {
+      fixedContent = fixedContent.substring(jsonStart);
+      
+      // 找到匹配的结束括号
+      let braceCount = 0;
+      let endPos = -1;
+      
+      for (let i = 0; i < fixedContent.length; i++) {
+        if (fixedContent[i] === '{') braceCount++;
+        else if (fixedContent[i] === '}') {
+          braceCount--;
+          if (braceCount === 0) {
+            endPos = i;
+            break;
+          }
+        }
+      }
+      
+      if (endPos !== -1) {
+        fixedContent = fixedContent.substring(0, endPos + 1);
+        const cleanedFixed = cleanJsonString(fixedContent);
+        return JSON.parse(cleanedFixed);
+      }
+    }
+  } catch (error) {
+    console.log(`修复尝试失败: ${error.message}`);
+  }
+
+  throw new Error('无法解析JSON内容，所有方法都失败了');
+}
+
 // 通义千问模型配置 (符合API限制 max_tokens: [1, 16384])
 const QWEN_MODELS = {
   'qwen-turbo': {
@@ -473,33 +582,79 @@ export async function generatePictureBook({ character, story, content, onProgres
     // 解析返回的JSON
     let parsedContent;
     try {
-      // 清理可能影响JSON解析的字符
-      let cleanContent = generatedContent;
-      
-      // 移除可能的markdown代码块标记
-      cleanContent = cleanContent.replace(/^```json\s*/i, '').replace(/\s*```$/, '');
-      cleanContent = cleanContent.replace(/^```\s*/, '').replace(/\s*```$/, '');
-      
-      // 尝试直接解析
-      parsedContent = JSON.parse(cleanContent);
+      parsedContent = parseJsonContent(generatedContent);
     } catch (parseError) {
       console.error('JSON解析错误:', parseError);
-      console.log('原始内容:', generatedContent);
+      console.log('原始内容前200字符:', generatedContent.substring(0, 200));
+      console.log('原始内容后200字符:', generatedContent.substring(generatedContent.length - 200));
       
-      // 如果JSON解析失败，尝试提取JSON部分
-      const jsonMatch = generatedContent.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        try {
-          let cleanJson = jsonMatch[0];
-          // 清理JSON中的反引号
-          cleanJson = cleanJson.replace(/`/g, '"');
-          parsedContent = JSON.parse(cleanJson);
-        } catch (secondError) {
-          console.error('二次JSON解析也失败:', secondError);
-          throw new Error(`无法解析通义千问返回的内容: ${parseError.message}`);
+      // 改进的JSON提取和清理逻辑
+      try {
+        // 方法1：寻找最完整的JSON结构
+        const jsonMatches = generatedContent.match(/\{[\s\S]*\}/g);
+        if (jsonMatches && jsonMatches.length > 0) {
+          // 选择最长的匹配项（可能最完整）
+          let bestMatch = jsonMatches.reduce((longest, current) => 
+            current.length > longest.length ? current : longest
+          );
+          
+          // 更全面的JSON清理
+          bestMatch = bestMatch
+            .replace(/`/g, '"')                    // 反引号替换为双引号
+            .replace(/'/g, '"')                    // 单引号替换为双引号
+            .replace(/[\u2018\u2019]/g, '"')       // 智能引号替换
+            .replace(/[\u201C\u201D]/g, '"')       // 智能双引号替换
+            .replace(/\n\s*\n/g, '\n')             // 清理多余换行
+            .replace(/,\s*}/g, '}')                // 清理结尾多余逗号
+            .replace(/,\s*]/g, ']')                // 清理数组结尾多余逗号
+            .replace(/\t/g, ' ')                   // 制表符替换为空格
+            .replace(/\r/g, '');                   // 清理回车符
+          
+          parsedContent = JSON.parse(bestMatch);
+        } else {
+          // 方法2：尝试从第一个{开始到最后一个}结束
+          const startIdx = generatedContent.indexOf('{');
+          const endIdx = generatedContent.lastIndexOf('}');
+          
+          if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
+            let extractedJson = generatedContent.substring(startIdx, endIdx + 1);
+            
+            // 应用同样的清理逻辑
+            extractedJson = extractedJson
+              .replace(/`/g, '"')
+              .replace(/'/g, '"')
+              .replace(/[\u2018\u2019]/g, '"')
+              .replace(/[\u201C\u201D]/g, '"')
+              .replace(/\n\s*\n/g, '\n')
+              .replace(/,\s*}/g, '}')
+              .replace(/,\s*]/g, ']')
+              .replace(/\t/g, ' ')
+              .replace(/\r/g, '');
+            
+            parsedContent = JSON.parse(extractedJson);
+          } else {
+            throw new Error('无法在响应中找到有效的JSON结构');
+          }
         }
-      } else {
-        throw new Error('无法在响应中找到有效的JSON内容');
+      } catch (secondError) {
+        console.error('二次JSON解析也失败:', secondError);
+        console.log('清理后的内容:', secondError.message);
+        
+        // 提供更详细的错误信息
+        const errorPos = secondError.message.match(/position (\d+)/);
+        if (errorPos) {
+          const pos = parseInt(errorPos[1]);
+          const context = generatedContent.substring(Math.max(0, pos - 50), pos + 50);
+          console.log('错误位置上下文:', context);
+        }
+        
+        throw new Error(`无法解析通义千问返回的内容: ${parseError.message}
+        
+🔍 详细错误信息：
+- 初始解析错误：${parseError.message}
+- 二次解析错误：${secondError.message}
+- 内容长度：${generatedContent.length}字符
+- 建议：请检查通义千问API返回的内容格式是否正确`);
       }
     }
 
