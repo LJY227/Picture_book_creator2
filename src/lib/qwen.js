@@ -25,21 +25,21 @@ export function cleanJsonString(jsonString) {
   // 专门处理JSON字符串值中的中文引号
   // 匹配 "key": "value" 格式，只在value中替换引号
   cleaned = cleaned.replace(/"([^"]*)":\s*"([^"]*)"/g, (match, key, value) => {
-    // 在字符串值中转义中文引号
+    // 在字符串值中转义中文引号为合法的内容
     const fixedValue = value
-      .replace(/'/g, "'")           // 中文左单引号 -> 英文单引号
-      .replace(/'/g, "'")           // 中文右单引号 -> 英文单引号
-      .replace(/"/g, '"')           // 中文左双引号 -> 英文双引号
-      .replace(/"/g, '"');          // 中文右双引号 -> 英文双引号
+      .replace(/'/g, "\\'")         // 中文左单引号 -> 转义单引号
+      .replace(/'/g, "\\'")         // 中文右单引号 -> 转义单引号
+      .replace(/"/g, '\\"')         // 中文左双引号 -> 转义双引号
+      .replace(/"/g, '\\"')         // 中文右双引号 -> 转义双引号
+      .replace(/"/g, '\\"');        // 标准双引号转义
     
     return `"${key}": "${fixedValue}"`;
   });
   
   // 处理其他常见的JSON格式问题
   cleaned = cleaned
-    // 替换各种引号类型
+    // 替换各种引号类型（只在非字符串值中）
     .replace(/`/g, '"')                    // 反引号替换为双引号
-    .replace(/'/g, '"')                    // 单引号替换为双引号
     .replace(/[\u2018\u2019]/g, '"')       // 智能引号替换
     .replace(/[\u201C\u201D]/g, '"')       // 智能双引号替换
     .replace(/[\u201A\u201E]/g, '"')       // 其他智能引号
