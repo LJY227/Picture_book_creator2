@@ -16,11 +16,28 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
  * @returns {string} 清理后的JSON字符串
  */
 export function cleanJsonString(jsonString) {
-  return jsonString
-    // 移除markdown代码块标记
+  // 首先移除markdown代码块
+  let cleaned = jsonString
     .replace(/^```json\s*/i, '').replace(/\s*```$/, '')
     .replace(/^```\s*/, '').replace(/\s*```$/, '')
-    // 替换各种引号
+    .trim();
+  
+  // 专门处理JSON字符串值中的中文引号
+  // 匹配 "key": "value" 格式，只在value中替换引号
+  cleaned = cleaned.replace(/"([^"]*)":\s*"([^"]*)"/g, (match, key, value) => {
+    // 在字符串值中转义中文引号
+    const fixedValue = value
+      .replace(/'/g, "'")           // 中文左单引号 -> 英文单引号
+      .replace(/'/g, "'")           // 中文右单引号 -> 英文单引号
+      .replace(/"/g, '"')           // 中文左双引号 -> 英文双引号
+      .replace(/"/g, '"');          // 中文右双引号 -> 英文双引号
+    
+    return `"${key}": "${fixedValue}"`;
+  });
+  
+  // 处理其他常见的JSON格式问题
+  cleaned = cleaned
+    // 替换各种引号类型
     .replace(/`/g, '"')                    // 反引号替换为双引号
     .replace(/'/g, '"')                    // 单引号替换为双引号
     .replace(/[\u2018\u2019]/g, '"')       // 智能引号替换
@@ -38,6 +55,8 @@ export function cleanJsonString(jsonString) {
     // 清理多余的空格
     .replace(/\s+/g, ' ')                  // 多个空格替换为单个空格
     .trim();
+  
+  return cleaned;
 }
 
 /**
