@@ -405,15 +405,15 @@ export async function regenerateIllustrationWithNewContent(pageData, characterDa
     
     let sceneDescription;
     try {
-      // 使用ChatGPT-4o进行智能分析
-      sceneDescription = await analyzeContentWithGPT4o(pageData.content);
-      console.log('使用ChatGPT-4o分析结果:', sceneDescription);
+      // 使用通义千问进行智能分析
+      sceneDescription = await analyzeContentWithQwen(pageData.content);
+      console.log('使用通义千问分析结果:', sceneDescription);
     } catch (error) {
-      console.log('ChatGPT-4o分析失败，使用本地关键词分析作为备用方案');
-      // 使用本地关键词分析作为备用
-      const analysisResult = analyzeContentKeywords(pageData.content);
-      console.log('内容分析结果:', analysisResult);
-      sceneDescription = generateSceneDescription({ content: pageData.content }, characterData);
+      console.log('通义千问分析失败，使用通用描述作为备用方案');
+      // 使用通用描述作为备用
+      const characterAge = characterData.age || 6;
+      const characterGender = characterData.gender === 'boy' ? 'boy' : characterData.gender === 'girl' ? 'girl' : 'child';
+      sceneDescription = `A ${characterAge}-year-old ${characterGender} in a children's book scene, in a safe and friendly environment, cute cartoon style, simple 2D art, bright colors, child-friendly, educational, wholesome, appropriate for children aged 3-7, clean background, storybook style`;
     }
 
     if (onProgress) onProgress('正在生成新插画...', 30);
@@ -527,143 +527,47 @@ export async function regenerateIllustrationWithNewContent(pageData, characterDa
 }
 
 /**
- * 根据文本内容生成场景描述（优先使用ChatGPT-4o）
+ * 根据文本内容生成场景描述（优先使用通义千问）
  */
-async function generateSceneDescription(content, characterData) {
+async function generateSceneDescription(content, characterData = {}) {
   try {
     console.log('分析的原始内容:', content);
     
-    if (!content || content.trim().length === 0) {
+    // 处理不同类型的输入
+    let contentText = '';
+    
+    if (typeof content === 'string') {
+      contentText = content;
+    } else if (content && typeof content === 'object') {
+      contentText = content.content || content.text || JSON.stringify(content);
+    } else {
+      contentText = String(content || '');
+    }
+    
+    console.log('处理输入内容，内容类型:', typeof content, '内容文本:', contentText);
+    
+    if (!contentText || contentText.trim().length === 0) {
       return `A child in a children's book scene, in a safe and friendly environment`;
     }
 
-    // 优先使用ChatGPT-4o分析
+    // 使用通义千问分析
     try {
-      const gptDescription = await analyzeContentWithGPT4o(content);
-      if (gptDescription && gptDescription.length > 50 && !gptDescription.includes('使用本地分析')) {
-        console.log('使用ChatGPT-4o生成的场景描述:', gptDescription);
-        return gptDescription;
+      const qwenDescription = await analyzeContentWithQwen(contentText);
+      if (qwenDescription && qwenDescription.length > 20) {
+        console.log('使用通义千问生成的场景描述:', qwenDescription);
+        return qwenDescription;
       }
     } catch (error) {
-      console.log('ChatGPT-4o分析失败，使用本地分析:', error);
+      console.log('通义千问分析失败，使用通用描述:', error);
     }
 
-    // 备用方案：使用本地分析
-    console.log('使用本地关键词分析作为备用方案');
+    // 备用方案：使用通用描述
+    console.log('使用通用描述作为备用方案');
     
     const characterAge = characterData.age || 6;
     const characterGender = characterData.gender === 'boy' ? 'boy' : characterData.gender === 'girl' ? 'girl' : 'child';
     
-    // 基础角色描述
-    let sceneDescription = `A ${characterAge}-year-old ${characterGender}`;
-    
-    // 深度分析内容，提取关键信息
-    const contentLower = content.toLowerCase();
-    const contentAnalysis = analyzeContentKeywords(content);
-    
-    console.log('内容分析结果:', contentAnalysis);
-    
-    // 1. 分析人物动作和表情
-    const actions = [];
-    const emotions = [];
-    
-    // 动作分析（更详细）
-    if (contentAnalysis.actions.length > 0) {
-      actions.push(...contentAnalysis.actions);
-    } else {
-      // 备用动作检测
-      if (contentLower.includes('跑') || contentLower.includes('running')) actions.push('running');
-      if (contentLower.includes('走') || contentLower.includes('walking')) actions.push('walking');
-      if (contentLower.includes('坐') || contentLower.includes('sitting')) actions.push('sitting');
-      if (contentLower.includes('站') || contentLower.includes('standing')) actions.push('standing');
-      if (contentLower.includes('看') || contentLower.includes('观察') || contentLower.includes('looking')) actions.push('looking carefully');
-      if (contentLower.includes('玩') || contentLower.includes('playing')) actions.push('playing');
-      if (contentLower.includes('学习') || contentLower.includes('learning')) actions.push('learning');
-      if (contentLower.includes('帮助') || contentLower.includes('helping')) actions.push('helping others');
-      if (contentLower.includes('种') || contentLower.includes('植树') || contentLower.includes('planting')) actions.push('planting trees');
-      if (contentLower.includes('说话') || contentLower.includes('交流') || contentLower.includes('talking')) actions.push('having a conversation');
-      if (contentLower.includes('拥抱') || contentLower.includes('hugging')) actions.push('hugging');
-      if (contentLower.includes('指') || contentLower.includes('pointing')) actions.push('pointing at something');
-      if (contentLower.includes('拿') || contentLower.includes('holding')) actions.push('holding something');
-      if (contentLower.includes('画') || contentLower.includes('drawing')) actions.push('drawing or painting');
-      if (contentLower.includes('读') || contentLower.includes('reading')) actions.push('reading a book');
-    }
-    
-    // 情感分析（更详细）
-    if (contentAnalysis.emotions.length > 0) {
-      emotions.push(...contentAnalysis.emotions);
-    } else {
-      // 备用情感检测
-      if (contentLower.includes('开心') || contentLower.includes('高兴') || contentLower.includes('快乐')) emotions.push('happy and joyful');
-      if (contentLower.includes('兴奋') || contentLower.includes('excited')) emotions.push('excited and enthusiastic');
-      if (contentLower.includes('好奇') || contentLower.includes('curious')) emotions.push('curious and interested');
-      if (contentLower.includes('惊讶') || contentLower.includes('surprised')) emotions.push('surprised and amazed');
-      if (contentLower.includes('紧张') || contentLower.includes('nervous')) emotions.push('nervous but brave');
-      if (contentLower.includes('自豪') || contentLower.includes('proud')) emotions.push('proud and accomplished');
-      if (contentLower.includes('温暖') || contentLower.includes('warm')) emotions.push('feeling warm and loved');
-    }
-    
-    // 构建动作和情感描述
-    if (actions.length > 0) {
-      sceneDescription += `, ${actions.join(' and ')}`;
-    }
-    
-    if (emotions.length > 0) {
-      sceneDescription += `, ${emotions.join(' and ')}`;
-    } else {
-      sceneDescription += ', with a friendly and peaceful expression';
-    }
-    
-    // 2. 分析场景环境
-    const environments = contentAnalysis.environments;
-    if (environments.length > 0) {
-      sceneDescription += ` ${environments.join(' and ')}`;
-    } else {
-      // 备用环境检测
-      if (contentLower.includes('公园')) sceneDescription += ' in a beautiful park with green lawns and shade trees';
-      else if (contentLower.includes('学校') || contentLower.includes('教室')) sceneDescription += ' in a bright and welcoming school classroom';
-      else if (contentLower.includes('家') || contentLower.includes('房间')) sceneDescription += ' at home in a cozy and comfortable room';
-      else if (contentLower.includes('森林')) sceneDescription += ' in a peaceful forest with tall trees';
-      else if (contentLower.includes('花园')) sceneDescription += ' in a colorful garden full of blooming flowers';
-      else if (contentLower.includes('操场')) sceneDescription += ' on a fun playground with play equipment';
-      else if (contentLower.includes('户外')) sceneDescription += ' in a beautiful outdoor natural setting';
-      else sceneDescription += ' in a safe and child-friendly environment';
-    }
-    
-    // 3. 分析相关物品和人物
-    const objects = contentAnalysis.objects;
-    const people = contentAnalysis.people;
-    
-    if (people.length > 0) {
-      sceneDescription += `, with ${people.join(' and ')} nearby`;
-    } else {
-      // 备用人物检测
-      if (contentLower.includes('妈妈') || contentLower.includes('mother')) sceneDescription += ', with mother nearby';
-      if (contentLower.includes('爸爸') || contentLower.includes('father')) sceneDescription += ', with father nearby';
-      if (contentLower.includes('父母')) sceneDescription += ', with supportive parents nearby';
-      if (contentLower.includes('朋友') || contentLower.includes('friends')) sceneDescription += ', with friends around';
-      if (contentLower.includes('老师') || contentLower.includes('teacher')) sceneDescription += ', with teacher present';
-    }
-    
-    if (objects.length > 0) {
-      sceneDescription += `, surrounded by ${objects.join(' and ')}`;
-    } else {
-      // 备用物品检测
-      if (contentLower.includes('树') || contentLower.includes('tree')) sceneDescription += ', with beautiful trees around';
-      if (contentLower.includes('花') || contentLower.includes('flower')) sceneDescription += ', surrounded by colorful flowers';
-      if (contentLower.includes('书') || contentLower.includes('book')) sceneDescription += ', with books nearby';
-      if (contentLower.includes('玩具') || contentLower.includes('toy')) sceneDescription += ', with toys around';
-      if (contentLower.includes('动物') || contentLower.includes('小狗') || contentLower.includes('小猫')) sceneDescription += ', with friendly animals';
-    }
-    
-    // 4. 分析具体活动内容
-    const activities = contentAnalysis.activities;
-    if (activities.length > 0) {
-      sceneDescription += `, engaged in ${activities.join(' and ')}`;
-    }
-    
-    console.log('最终生成的场景描述:', sceneDescription);
-    return sceneDescription;
+    return `A ${characterAge}-year-old ${characterGender} in a children's book scene, in a safe and friendly environment, cute cartoon style, simple 2D art, bright colors, child-friendly, educational, wholesome, appropriate for children aged 3-7, clean background, storybook style`;
 
   } catch (error) {
     console.error('场景描述生成失败:', error);
@@ -672,70 +576,77 @@ async function generateSceneDescription(content, characterData) {
 }
 
 /**
- * 使用ChatGPT-4o分析内容并生成场景描述
+ * 使用通义千问分析内容并生成场景描述
  */
-async function analyzeContentWithGPT4o(content) {
+async function analyzeContentWithQwen(content) {
   try {
-    console.log('使用ChatGPT-4o分析内容:', content);
+    console.log('使用通义千问分析内容:', content);
     
-    // 首先尝试从环境变量获取API密钥，然后尝试localStorage作为备用
-    const openaiApiKey = import.meta.env.VITE_OPENAI_API_KEY || localStorage.getItem('openaiApiKey');
-    if (!openaiApiKey) {
-      console.log('没有OpenAI API密钥，使用本地分析');
-      return analyzeContentKeywords(content);
+    // 检查内容是否为字符串
+    if (typeof content !== 'string') {
+      console.warn('内容不是字符串，使用通用描述:', content);
+      return 'A child in a children\'s book scene, in a safe and friendly environment, cute cartoon style, simple 2D art, bright colors, child-friendly, educational, wholesome, appropriate for children aged 3-7, clean background, storybook style';
     }
-
-    console.log('找到OpenAI API密钥，开始调用ChatGPT-4o...');
-
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${openaiApiKey}`
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o',
-        messages: [
-          {
-            role: 'system',
-            content: `你是一个专业的儿童绘本插画描述生成器。请将中文内容转换为详细的英文插画描述。
-
-要求：
-1. 描述必须适合6岁儿童观看
-2. 风格：可爱卡通风格，明亮色彩，简单2D艺术
-3. 必须包含具体的动作、情感、环境、物品等细节
-4. 强调无文字要求：NO TEXT, NO WORDS, NO LETTERS, NO CHINESE CHARACTERS, NO WRITING
-5. 输出格式：直接返回英文描述，不要额外解释
-
-示例：
-输入：主角看到了天空中的星空。主角感到非常高兴。
-输出：A 6-year-old child looking up at a magical starry night sky, filled with twinkling stars and a gentle crescent moon, the child's face showing pure joy and wonder, standing in a peaceful outdoor setting, cute cartoon style, simple 2D art, bright colors, child-friendly, educational, wholesome, appropriate for children aged 3-7, clean background, storybook style. NO TEXT, NO WORDS, NO LETTERS, NO CHINESE CHARACTERS, NO WRITING in the image.`
-          },
-          {
-            role: 'user',
-            content: content
-          }
-        ],
-        max_tokens: 300,
-        temperature: 0.7
-      })
-    });
-
-    if (!response.ok) {
-      throw new Error(`OpenAI API请求失败: ${response.status}`);
-    }
-
-    const data = await response.json();
-    const sceneDescription = data.choices[0].message.content.trim();
     
-    console.log('ChatGPT-4o生成的场景描述:', sceneDescription);
+    // 动态导入通义千问API函数
+    const { callQwenChat } = await import('./qwen.js');
+    
+    // 构建专门的提示词用于分析绘本内容并生成场景描述
+    const prompt = `你是一个专业的儿童绘本插画描述生成器。请将以下中文绘本内容转换为详细的英文插画描述，用于AI图像生成。
+
+【内容分析要求】
+1. 仔细分析绘本内容中的场景、人物、动作、情感和环境
+2. 生成适合6岁儿童观看的插画描述
+3. 风格要求：可爱卡通风格，明亮色彩，简单2D艺术
+4. 必须包含具体的动作、表情、环境、物品等细节
+5. 强调无文字要求：NO TEXT, NO WORDS, NO LETTERS, NO CHINESE CHARACTERS, NO WRITING
+
+【输出格式】
+请直接返回英文插画描述，不要添加任何解释或说明。
+
+【输入内容】
+${content}
+
+【输出示例】
+A 6-year-old child walking through a peaceful forest, surrounded by tall green trees and colorful flowers, the child's face showing curiosity and wonder, warm sunlight filtering through the leaves, cute cartoon style, simple 2D art, bright colors, child-friendly, educational, wholesome, appropriate for children aged 3-7, clean background, storybook style, NO TEXT, NO WORDS, NO LETTERS, NO CHINESE CHARACTERS, NO WRITING in the image.
+
+请生成插画描述：`;
+
+    console.log('🤖 通义千问分析内容提示词:', prompt);
+    
+    // 调用通义千问API
+    const response = await callQwenChat({
+      messages: [
+        {
+          role: "user",
+          content: prompt
+        }
+      ],
+      temperature: 0.7,
+      max_tokens: 400
+    }, 'CONTENT_ANALYSIS');
+
+    let sceneDescription = response.choices[0].message.content.trim();
+    
+    // 清理可能的多余内容
+    sceneDescription = sceneDescription.replace(/^["']|["']$/g, '').trim();
+    
+         // 验证生成的描述是否有效
+     if (sceneDescription.length < 20 || sceneDescription.includes('无法') || sceneDescription.includes('抱歉')) {
+       console.warn('通义千问返回的描述无效，使用通用描述:', sceneDescription);
+       return 'A child in a children\'s book scene, in a safe and friendly environment, cute cartoon style, simple 2D art, bright colors, child-friendly, educational, wholesome, appropriate for children aged 3-7, clean background, storybook style';
+     }
+    
+    console.log('✅ 通义千问生成的场景描述:', sceneDescription);
     return sceneDescription;
     
   } catch (error) {
-    console.error('ChatGPT-4o分析失败，使用本地分析:', error);
-    return generateSceneDescription({ content }, {});
+    console.error('通义千问分析失败，使用通用描述:', error);
+    return 'A child in a children\'s book scene, in a safe and friendly environment, cute cartoon style, simple 2D art, bright colors, child-friendly, educational, wholesome, appropriate for children aged 3-7, clean background, storybook style';
   }
 }
+
+
 
 /**
  * 深度分析内容关键词（备用方案）
@@ -1023,10 +934,61 @@ function analyzeContentKeywords(content) {
  */
 function buildIllustrationPrompt(pageData, characterData) {
   const characterDescription = generateCharacterDescription(characterData);
-  const sceneDescription = pageData.sceneDescription || 'in a children\'s book scene';
+  
+  // 优先使用sceneDescription，如果没有则基于页面内容生成
+  let sceneDescription = pageData.sceneDescription;
+  
+  if (!sceneDescription) {
+    // 如果没有场景描述，尝试从页面内容生成
+    const pageContent = pageData.content || pageData.text || '';
+    if (pageContent.trim().length > 0) {
+      console.log('从页面内容生成场景描述:', pageContent);
+      // 使用本地分析生成场景描述
+      const analysis = analyzeContentKeywords(pageContent);
+      sceneDescription = generateSceneFromAnalysis(analysis, characterData);
+    } else {
+      sceneDescription = 'in a safe and friendly children\'s book scene';
+    }
+  }
+  
+  console.log('最终场景描述:', sceneDescription);
   
   // 确保提示词完全是英文，避免图片中出现文字，强化无文字指令
   return `Children's book illustration, ${characterDescription}, ${sceneDescription}, cute cartoon style, simple 2D art, bright colors, child-friendly, educational, wholesome, appropriate for children aged 3-7, clean background, storybook style by Flavia Sorrentino, NO TEXT, NO WORDS, NO LETTERS, NO CHINESE CHARACTERS, NO WRITING, illustration only, pure visual storytelling, text-free artwork`;
+}
+
+/**
+ * 根据分析结果生成场景描述
+ */
+function generateSceneFromAnalysis(analysis, characterData) {
+  const characterAge = characterData.age || 6;
+  const characterGender = characterData.gender === 'boy' ? 'boy' : characterData.gender === 'girl' ? 'girl' : 'child';
+  
+  let sceneDescription = `A ${characterAge}-year-old ${characterGender}`;
+  
+  // 添加动作
+  if (analysis.actions.length > 0) {
+    sceneDescription += ` ${analysis.actions[0]}`;
+  }
+  
+  // 添加环境
+  if (analysis.environments.length > 0) {
+    sceneDescription += ` ${analysis.environments[0]}`;
+  } else {
+    sceneDescription += ' in a safe and friendly environment';
+  }
+  
+  // 添加情感
+  if (analysis.emotions.length > 0) {
+    sceneDescription += `, ${analysis.emotions[0]}`;
+  }
+  
+  // 添加物品
+  if (analysis.objects.length > 0) {
+    sceneDescription += `, with ${analysis.objects[0]}`;
+  }
+  
+  return sceneDescription;
 }
 
 /**

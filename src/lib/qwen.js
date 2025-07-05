@@ -486,7 +486,7 @@ function optimizeCharacterLocally(userDescription, basicInfo) {
   return optimized;
 }
 
-// 本地翻译函数
+// 本地翻译函数 - 改进版，避免中英文混杂
 function translateLocally(description, basicInfo) {
   const cacheKey = `trans_${description}`;
   if (LOCAL_PROCESSING.cache.has(cacheKey)) {
@@ -494,40 +494,86 @@ function translateLocally(description, basicInfo) {
     return LOCAL_PROCESSING.cache.get(cacheKey);
   }
 
-  // 简单的本地翻译映射
-  const translations = {
-    '小男孩': 'little boy',
-    '小女孩': 'little girl',
-    '孩子': 'child',
-    '头发': 'hair',
-    '眼睛': 'eyes',
-    '笑容': 'smile',
-    '可爱': 'cute',
-    '聪明': 'smart',
-    '善良': 'kind',
-    '活泼': 'lively',
-    '黑色': 'black',
-    '棕色': 'brown',
-    '大': 'big',
-    '小': 'small'
-  };
+  // 尝试使用智能模板匹配进行完整翻译
+  const { age = 6, gender = 'any', identity = 'human' } = basicInfo;
   
-  let translated = description;
-  for (const [chinese, english] of Object.entries(translations)) {
-    translated = translated.replace(new RegExp(chinese, 'g'), english);
+  // 检查是否是常见的角色描述模式
+  const patterns = [
+    {
+      // 匹配：一只6岁的小熊，穿着红色的上衣，蓝色的裤子，有着大眼睛和黑头发和可爱的笑容
+      regex: /^一只(\d+)岁的([^，]+)，(.+)$/,
+      template: (match) => {
+        const age = match[1];
+        const animal = match[2];
+        const details = match[3];
+        
+        // 动物类型映射
+        const animalMap = {
+          '小熊': 'little bear',
+          '小兔': 'little rabbit', 
+          '小猫': 'little cat',
+          '小狗': 'little dog',
+          '熊': 'bear',
+          '兔子': 'rabbit',
+          '猫': 'cat',
+          '狗': 'dog'
+        };
+        
+        const englishAnimal = animalMap[animal] || 'cute animal';
+        
+        // 简化细节描述，使用通用模板
+        return `A ${age}-year-old ${englishAnimal} with friendly appearance and cute characteristics`;
+      }
+    },
+    {
+      // 匹配：6岁的小男孩/小女孩
+      regex: /^(\d+)岁的(小男孩|小女孩|孩子)(.*)$/,
+      template: (match) => {
+        const age = match[1];
+        const gender = match[2] === '小男孩' ? 'boy' : match[2] === '小女孩' ? 'girl' : 'child';
+        return `A ${age}-year-old friendly ${gender} with cheerful appearance`;
+      }
+    }
+  ];
+  
+  // 尝试模式匹配
+  for (const pattern of patterns) {
+    const match = description.match(pattern.regex);
+    if (match) {
+      const translated = pattern.template(match);
+      
+      // 缓存结果
+      if (LOCAL_PROCESSING.cache.size >= LOCAL_PROCESSING.maxCacheSize) {
+        const oldestKey = LOCAL_PROCESSING.cache.keys().next().value;
+        LOCAL_PROCESSING.cache.delete(oldestKey);
+      }
+      LOCAL_PROCESSING.cache.set(cacheKey, translated);
+      
+      console.log('🎯 模式匹配翻译成功:', { original: description, translated });
+      return translated;
+    }
   }
   
-  // 缓存结果
-  if (translated !== description) {
+  // 如果模式匹配失败，检查是否是简单的角色描述
+  if (description.length < 50 && (description.includes('小') || description.includes('岁'))) {
+    // 生成基础的英文描述
+    const genderText = gender === 'boy' ? 'boy' : gender === 'girl' ? 'girl' : 'child';
+    const identityText = identity === 'animal' ? 'cute animal character' : `friendly ${genderText}`;
+    const translated = `A ${age}-year-old ${identityText} with charming appearance`;
+    
+    // 缓存结果
     if (LOCAL_PROCESSING.cache.size >= LOCAL_PROCESSING.maxCacheSize) {
       const oldestKey = LOCAL_PROCESSING.cache.keys().next().value;
       LOCAL_PROCESSING.cache.delete(oldestKey);
     }
     LOCAL_PROCESSING.cache.set(cacheKey, translated);
+    
+    console.log('🔄 基础模板翻译:', { original: description, translated });
     return translated;
   }
   
-  return null; // 无法本地翻译
+  console.log('❌ 本地翻译无法处理，需要API翻译:', description);
+  return null; // 无法本地翻译，需要API翻译
 }
 
 // 生成备用角色描述
