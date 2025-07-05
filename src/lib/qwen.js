@@ -22,16 +22,21 @@ export function cleanJsonString(jsonString) {
     .replace(/^```\s*/, '').replace(/\s*```$/, '')
     .trim();
   
+  // 定义中文引号字符 (使用Unicode编码确保兼容性)
+  const chineseLeftQuote = String.fromCharCode(8220);   // " (U+201C)
+  const chineseRightQuote = String.fromCharCode(8221);  // " (U+201D)
+  const chineseLeftSingle = String.fromCharCode(8216);  // ' (U+2018)
+  const chineseRightSingle = String.fromCharCode(8217); // ' (U+2019)
+  
   // 专门处理JSON字符串值中的中文引号
-  // 匹配 "key": "value" 格式，只在value中替换引号
-  cleaned = cleaned.replace(/"([^"]*)":\s*"([^"]*)"/g, (match, key, value) => {
-    // 在字符串值中转义中文引号为合法的内容
+  // 直接在JSON字符串值中替换中文引号为合法的内容
+  cleaned = cleaned.replace(/"([^"]*?)":\s*"(.*?)"/g, (match, key, value) => {
+    // 在字符串值中替换中文引号为合法的内容
     const fixedValue = value
-      .replace(/'/g, "\\'")         // 中文左单引号 -> 转义单引号
-      .replace(/'/g, "\\'")         // 中文右单引号 -> 转义单引号
-      .replace(/"/g, '\\"')         // 中文左双引号 -> 转义双引号
-      .replace(/"/g, '\\"')         // 中文右双引号 -> 转义双引号
-      .replace(/"/g, '\\"');        // 标准双引号转义
+      .replace(new RegExp(chineseLeftSingle, 'g'), "'")    // 中文左单引号 -> 普通单引号
+      .replace(new RegExp(chineseRightSingle, 'g'), "'")   // 中文右单引号 -> 普通单引号
+      .replace(new RegExp(chineseLeftQuote, 'g'), '\\"')   // 中文左双引号 -> 转义双引号
+      .replace(new RegExp(chineseRightQuote, 'g'), '\\"'); // 中文右双引号 -> 转义双引号
     
     return `"${key}": "${fixedValue}"`;
   });
@@ -254,7 +259,9 @@ async function callQwenChat(options, taskType = 'FAST_PROCESSING', retryCount = 
       model: modelName,
       messages: options.messages,
       temperature: options.temperature || modelConfig.temperature,
-      max_tokens: Math.max(1, maxTokens)  // 确保至少为1
+      max_tokens: Math.max(1, maxTokens),  // 确保至少为1
+      top_p: options.top_p || 0.95,        // 核采样参数，提高输出稳定性
+      stream: false                        // 明确设置为非流式输出
     };
 
     console.log('📤 发送请求 (OpenAI格式):', {
@@ -583,6 +590,12 @@ export async function generatePictureBook({ character, story, content, onProgres
 - 每页插画描述要让插画师能创作出与故事完美匹配的图像
 - 角色外貌描述要精确一致，确保整本书的视觉连贯性
 
+**重要格式要求**：
+- 必须返回有效的JSON格式
+- 文本内容中避免使用中文引号（" " ' '）
+- 如需引用对话，请使用英文引号或省略引号
+- 确保JSON结构完整准确
+
 请严格按照用户的详细要求创作，确保生成高质量的专业教学绘本内容。`
         },
         {
@@ -590,7 +603,8 @@ export async function generatePictureBook({ character, story, content, onProgres
           content: prompt
         }
       ],
-      temperature: modelConfig.temperature,
+      temperature: 0.2,  // 使用较低温度确保JSON格式稳定
+      top_p: 0.8,        // 降低随机性，提高输出一致性
       max_tokens: Math.min(modelConfig.maxTokens, 16384)  // 确保符合API限制
     }, 'STORY_GENERATION');
 
