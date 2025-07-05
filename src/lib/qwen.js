@@ -102,17 +102,96 @@ export function cleanJsonString(jsonString) {
  * @param {string} content - 要解析的内容
  * @returns {Object} 解析后的JSON对象
  */
+// 添加错误位置分析工具
+function analyzeJsonError(jsonString, error) {
+  const positionMatch = error.message.match(/position (\d+)/);
+  if (positionMatch) {
+    const position = parseInt(positionMatch[1]);
+    console.log(`🔍 JSON解析错误位置: ${position}`);
+    
+    // 显示错误位置前后的内容
+    const start = Math.max(0, position - 50);
+    const end = Math.min(jsonString.length, position + 50);
+    const context = jsonString.substring(start, end);
+    console.log('🔍 错误位置前后内容:', context);
+    console.log('🔍 错误位置字符:', jsonString.charAt(position));
+    console.log('🔍 错误位置字符代码:', jsonString.charCodeAt(position));
+    
+    // 分析错误类型
+    if (error.message.includes('Expected property name')) {
+      console.log('🔍 错误类型: 期望属性名 - 可能是多余的逗号或缺少属性名');
+    } else if (error.message.includes('Expected')) {
+      console.log('🔍 错误类型: 期望特定字符 - 可能是格式问题');
+    }
+  }
+}
+
+// 强化JSON修复方法
+function aggressiveJsonFix(jsonString) {
+  console.log('🔧 开始强化JSON修复...');
+  
+  let fixed = jsonString;
+  
+  // 1. 清理各种空白字符和不可见字符
+  fixed = fixed
+    .replace(/[\u0000-\u0009\u000B\u000C\u000E-\u001F\u007F-\u009F]/g, '') // 清理控制字符
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')  // 清理零宽字符
+    .replace(/[\u2028\u2029]/g, ' ')        // 行分隔符
+    .replace(/\r\n/g, '\n')                 // 统一换行符
+    .replace(/\r/g, '\n')                   // 统一换行符
+    .replace(/\t/g, ' ')                    // 制表符
+    .replace(/\n/g, ' ')                    // 换行符替换为空格
+    .replace(/\s+/g, ' ')                   // 多个空格合并
+    .trim();
+  
+  // 2. 修复常见的JSON格式问题
+  fixed = fixed
+    // 清理多余的逗号（这是最常见的"Expected property name"错误原因）
+    .replace(/,\s*,/g, ',')                 // 双重逗号
+    .replace(/,\s*}/g, '}')                 // 对象结尾的逗号
+    .replace(/,\s*]/g, ']')                 // 数组结尾的逗号
+    // 修复缺少引号的属性名
+    .replace(/([{,]\s*)([a-zA-Z_$][a-zA-Z0-9_$]*)\s*:/g, '$1"$2":')
+    // 标准化冒号和逗号
+    .replace(/\s*:\s*/g, ':')
+    .replace(/\s*,\s*/g, ',')
+    // 确保字符串值用双引号包围
+    .replace(/:\s*'([^']*)'/g, ':"$1"')
+    // 处理空值
+    .replace(/:\s*null\s*,/g, ':"",')
+    .replace(/:\s*undefined\s*,/g, ':"",');
+  
+  // 3. 特殊修复：处理可能的编码问题
+  fixed = fixed
+    .replace(/"/g, '"')                     // 智能引号
+    .replace(/"/g, '"')                     // 智能引号
+    .replace(/'/g, "'")                     // 智能单引号
+    .replace(/'/g, "'");                    // 智能单引号
+  
+  // 4. 最后的清理
+  fixed = fixed
+    .replace(/\s*{\s*/g, '{')
+    .replace(/\s*}\s*/g, '}')
+    .replace(/\s*\[\s*/g, '[')
+    .replace(/\s*\]\s*/g, ']')
+    .trim();
+  
+  console.log('🔧 强化修复完成，原长度:', jsonString.length, '修复后长度:', fixed.length);
+  return fixed;
+}
+
 export function parseJsonContent(content) {
   console.log('🔍 开始解析JSON内容，原始长度:', content.length);
   
   // 首先尝试直接解析清理后的内容
+  let cleanedContent;
   try {
-    const cleanedContent = cleanJsonString(content);
+    cleanedContent = cleanJsonString(content);
     console.log('🔍 尝试解析清理后的内容...');
     return JSON.parse(cleanedContent);
   } catch (error) {
     console.log('直接解析失败，错误:', error.message);
-    console.log('错误位置:', error.message.match(/position (\d+)/)?.[1] || '未知');
+    analyzeJsonError(cleanedContent, error);
   }
 
   // 方法1：寻找最完整的JSON结构
@@ -126,38 +205,72 @@ export function parseJsonContent(content) {
         return JSON.parse(cleanedMatch);
       } catch (error) {
         console.log(`匹配项解析失败，尝试下一个: ${error.message}`);
+        analyzeJsonError(cleanedMatch, error);
         continue;
       }
     }
   }
 
-  // 方法2：智能修复常见问题
-  console.log('🔍 方法2: 智能修复...');
+  // 方法2：强化修复（针对"Expected property name"错误）
+  console.log('🔍 方法2: 强化修复...');
+  let fixedContent2;
   try {
-    let fixedContent = content;
+    fixedContent2 = content;
     
     // 移除markdown包装
-    fixedContent = fixedContent
+    fixedContent2 = fixedContent2
       .replace(/^```json\s*/i, '').replace(/\s*```$/, '')
       .replace(/^```\s*/, '').replace(/\s*```$/, '')
       .trim();
     
     // 找到JSON开始和结束
-    const startIdx = fixedContent.indexOf('{');
-    const endIdx = fixedContent.lastIndexOf('}');
+    const startIdx = fixedContent2.indexOf('{');
+    const endIdx = fixedContent2.lastIndexOf('}');
     
     if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
-      fixedContent = fixedContent.substring(startIdx, endIdx + 1);
+      fixedContent2 = fixedContent2.substring(startIdx, endIdx + 1);
+      
+      // 使用强化修复方法
+      fixedContent2 = aggressiveJsonFix(fixedContent2);
+      
+      console.log('🔍 强化修复后的JSON前200字符:', fixedContent2.substring(0, 200));
+      return JSON.parse(fixedContent2);
+    }
+  } catch (error) {
+    console.log(`强化修复失败: ${error.message}`);
+    if (fixedContent2) {
+      analyzeJsonError(fixedContent2, error);
+    }
+  }
+
+  // 方法3：智能修复常见问题
+  console.log('🔍 方法3: 智能修复...');
+  let fixedContent3;
+  try {
+    fixedContent3 = content;
+    
+    // 移除markdown包装
+    fixedContent3 = fixedContent3
+      .replace(/^```json\s*/i, '').replace(/\s*```$/, '')
+      .replace(/^```\s*/, '').replace(/\s*```$/, '')
+      .trim();
+    
+    // 找到JSON开始和结束
+    const startIdx = fixedContent3.indexOf('{');
+    const endIdx = fixedContent3.lastIndexOf('}');
+    
+    if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
+      fixedContent3 = fixedContent3.substring(startIdx, endIdx + 1);
       
       // 特殊修复：处理类似 "6 years old" 的值
-      fixedContent = fixedContent.replace(/"([^"]*)":\s*"([^"]*\s+[^"]*)"/g, (match, key, value) => {
+      fixedContent3 = fixedContent3.replace(/"([^"]*)":\s*"([^"]*\s+[^"]*)"/g, (match, key, value) => {
         // 简单清理包含空格的值
         const cleanValue = value.replace(/\s+/g, ' ').trim();
         return `"${key}": "${cleanValue}"`;
       });
       
       // 修复常见的JSON问题
-      fixedContent = fixedContent
+      fixedContent3 = fixedContent3
         .replace(/,\s*}/g, '}')                 // 移除尾随逗号
         .replace(/,\s*]/g, ']')                 // 移除数组尾随逗号
         .replace(/\n/g, ' ')                    // 换行符替换为空格
@@ -167,28 +280,32 @@ export function parseJsonContent(content) {
         .replace(/\s*:\s*/g, ':')               // 标准化冒号
         .replace(/\s*,\s*/g, ',');              // 标准化逗号
       
-      console.log('🔍 修复后的JSON前200字符:', fixedContent.substring(0, 200));
-      return JSON.parse(fixedContent);
+      console.log('🔍 智能修复后的JSON前200字符:', fixedContent3.substring(0, 200));
+      return JSON.parse(fixedContent3);
     }
   } catch (error) {
     console.log(`智能修复失败: ${error.message}`);
+    if (fixedContent3) {
+      analyzeJsonError(fixedContent3, error);
+    }
   }
 
-  // 方法3：最后的括号匹配尝试
-  console.log('🔍 方法3: 括号匹配...');
+  // 方法4：最后的括号匹配尝试
+  console.log('🔍 方法4: 括号匹配...');
+  let fixedContent4;
   try {
-    let fixedContent = content;
-    const jsonStart = fixedContent.search(/\{[\s\S]*"[^"]*"[\s\S]*:/);
+    fixedContent4 = content;
+    const jsonStart = fixedContent4.search(/\{[\s\S]*"[^"]*"[\s\S]*:/);
     if (jsonStart !== -1) {
-      fixedContent = fixedContent.substring(jsonStart);
+      fixedContent4 = fixedContent4.substring(jsonStart);
       
       // 找到匹配的结束括号
       let braceCount = 0;
       let endPos = -1;
       
-      for (let i = 0; i < fixedContent.length; i++) {
-        if (fixedContent[i] === '{') braceCount++;
-        else if (fixedContent[i] === '}') {
+      for (let i = 0; i < fixedContent4.length; i++) {
+        if (fixedContent4[i] === '{') braceCount++;
+        else if (fixedContent4[i] === '}') {
           braceCount--;
           if (braceCount === 0) {
             endPos = i;
@@ -198,13 +315,16 @@ export function parseJsonContent(content) {
       }
       
       if (endPos !== -1) {
-        fixedContent = fixedContent.substring(0, endPos + 1);
-        const cleanedFixed = cleanJsonString(fixedContent);
+        fixedContent4 = fixedContent4.substring(0, endPos + 1);
+        const cleanedFixed = cleanJsonString(fixedContent4);
         return JSON.parse(cleanedFixed);
       }
     }
   } catch (error) {
     console.log(`括号匹配失败: ${error.message}`);
+    if (fixedContent4) {
+      analyzeJsonError(fixedContent4, error);
+    }
   }
 
   console.error('❌ 所有JSON解析方法都失败了');
