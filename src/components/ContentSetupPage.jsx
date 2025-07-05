@@ -6,10 +6,12 @@ import { Switch } from '@/components/ui/switch.jsx'
 
 import { ArrowLeft, Sparkles, GraduationCap, Loader2, Zap, Settings, Edit3, CheckCircle } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
+import { useLanguage } from '../contexts/LanguageContext.jsx'
 import { generatePictureBook } from '@/lib/qwen.js'
 
 export default function ContentSetupPage() {
   const navigate = useNavigate()
+  const { currentLanguage } = useLanguage()
   const [contentData, setContentData] = useState({
     isCustom: false,
     customContent: '',
@@ -115,6 +117,7 @@ export default function ContentSetupPage() {
         },
         imageEngine: finalContentData.imageEngine,
         useCharacterConsistency: true, // 强制启用角色一致性
+        userLanguage: currentLanguage, // 传递用户选择的语言
         onProgress: (status, progress) => {
           setGenerationStatus(status)
           setGenerationProgress(progress)

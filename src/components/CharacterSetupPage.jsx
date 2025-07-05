@@ -7,11 +7,13 @@ import { Textarea } from '@/components/ui/textarea.jsx'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card.jsx'
 import { ArrowLeft, ArrowRight, User, Sparkles, Settings, Loader2 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
+import { useLanguage } from '../contexts/LanguageContext.jsx'
 import { CHARACTER_STRATEGY } from '@/lib/characterConsistency.js'
 import { optimizeCharacterDescription } from '@/lib/qwen.js'
 
 export default function CharacterSetupPage() {
   const navigate = useNavigate()
+  const { t, currentLanguage } = useLanguage()
   const [characterData, setCharacterData] = useState({
     name: '',
     age: 6,
@@ -28,8 +30,13 @@ export default function CharacterSetupPage() {
   const handleNext = () => {
     // 如果姓名为空，生成随机姓名
     if (!characterData.name.trim()) {
-      const randomNames = ['小明', '小红', '小华', '小丽', '小强', '小美', '小杰', '小雨']
-      const randomName = randomNames[Math.floor(Math.random() * randomNames.length)]
+      const randomNames = {
+        'zh-CN': ['小明', '小红', '小华', '小丽', '小强', '小美', '小杰', '小雨'],
+        'zh-TW': ['小明', '小紅', '小華', '小麗', '小強', '小美', '小傑', '小雨'],
+        'en': ['Alex', 'Sam', 'Jamie', 'Taylor', 'Morgan', 'Casey', 'Riley', 'Jordan']
+      }
+      const names = randomNames[currentLanguage] || randomNames['zh-CN']
+      const randomName = names[Math.floor(Math.random() * names.length)]
       setCharacterData(prev => ({ ...prev, name: randomName }))
     }
     
@@ -70,7 +77,7 @@ export default function CharacterSetupPage() {
         optimizedDescription: optimizedResult
       }))
     } catch (error) {
-      console.error('优化角色描述失败:', error)
+      console.error('Optimize character description failed:', error)
       // 可以添加错误提示
     } finally {
       setIsOptimizing(false)
@@ -88,9 +95,9 @@ export default function CharacterSetupPage() {
         <div className="max-w-2xl mx-auto flex items-center justify-between">
           <div className="flex items-center">
             <User className="w-6 h-6 text-blue-500 mr-3" />
-            <h1 className="text-xl font-medium text-gray-800">角色设定</h1>
+            <h1 className="text-xl font-medium text-gray-800">{t('character.title')}</h1>
           </div>
-          <div className="text-sm text-gray-500">步骤 1/3</div>
+          <div className="text-sm text-gray-500">{t('character.step')}</div>
         </div>
         
         {/* 进度条 */}
@@ -107,12 +114,12 @@ export default function CharacterSetupPage() {
           {/* 角色姓名 */}
           <div className="space-y-3">
             <Label htmlFor="name" className="text-base font-medium text-gray-700">
-              角色姓名
+              {t('character.name')}
             </Label>
             <Input
               id="name"
               type="text"
-              placeholder="请输入角色姓名（可选，留空将随机生成）"
+              placeholder={t('character.name.placeholder')}
               value={characterData.name}
               onChange={(e) => setCharacterData(prev => ({ ...prev, name: e.target.value }))}
               className="text-base py-3 rounded-xl border-gray-200 focus:border-blue-500"
@@ -122,7 +129,7 @@ export default function CharacterSetupPage() {
           {/* 角色年龄 */}
           <div className="space-y-3">
             <Label htmlFor="age" className="text-base font-medium text-gray-700">
-              角色年龄
+              {t('character.age')}
             </Label>
             <Input
               id="age"
@@ -133,12 +140,12 @@ export default function CharacterSetupPage() {
               onChange={(e) => setCharacterData(prev => ({ ...prev, age: parseInt(e.target.value) }))}
               className="text-base py-3 rounded-xl border-gray-200 focus:border-blue-500"
             />
-            <p className="text-sm text-gray-500">适合年龄：3-12岁</p>
+            <p className="text-sm text-gray-500">{t('character.age.note')}</p>
           </div>
 
           {/* 角色身份 */}
           <div className="space-y-4">
-            <Label className="text-base font-medium text-gray-700">角色身份</Label>
+            <Label className="text-base font-medium text-gray-700">{t('character.identity')}</Label>
             <RadioGroup
               value={characterData.identity}
               onValueChange={(value) => setCharacterData(prev => ({ ...prev, identity: value }))}
@@ -146,18 +153,18 @@ export default function CharacterSetupPage() {
             >
               <div className="flex items-center space-x-2">
                 <RadioGroupItem value="human" id="human" />
-                <Label htmlFor="human" className="text-base cursor-pointer">人类</Label>
+                <Label htmlFor="human" className="text-base cursor-pointer">{t('character.identity.human')}</Label>
               </div>
               <div className="flex items-center space-x-2">
                 <RadioGroupItem value="animal" id="animal" />
-                <Label htmlFor="animal" className="text-base cursor-pointer">动物</Label>
+                <Label htmlFor="animal" className="text-base cursor-pointer">{t('character.identity.animal')}</Label>
               </div>
             </RadioGroup>
           </div>
 
           {/* 角色性别 */}
           <div className="space-y-4">
-            <Label className="text-base font-medium text-gray-700">角色性别</Label>
+            <Label className="text-base font-medium text-gray-700">{t('character.gender')}</Label>
             <RadioGroup
               value={characterData.gender}
               onValueChange={(value) => setCharacterData(prev => ({ ...prev, gender: value }))}
@@ -165,15 +172,15 @@ export default function CharacterSetupPage() {
             >
               <div className="flex items-center space-x-2">
                 <RadioGroupItem value="boy" id="boy" />
-                <Label htmlFor="boy" className="text-base cursor-pointer">男孩</Label>
+                <Label htmlFor="boy" className="text-base cursor-pointer">{t('character.gender.boy')}</Label>
               </div>
               <div className="flex items-center space-x-2">
                 <RadioGroupItem value="girl" id="girl" />
-                <Label htmlFor="girl" className="text-base cursor-pointer">女孩</Label>
+                <Label htmlFor="girl" className="text-base cursor-pointer">{t('character.gender.girl')}</Label>
               </div>
               <div className="flex items-center space-x-2">
                 <RadioGroupItem value="any" id="any" />
-                <Label htmlFor="any" className="text-base cursor-pointer">不限</Label>
+                <Label htmlFor="any" className="text-base cursor-pointer">{t('character.gender.any')}</Label>
               </div>
             </RadioGroup>
           </div>
@@ -188,10 +195,10 @@ export default function CharacterSetupPage() {
             >
               <div className="flex items-center">
                 <Settings className="w-5 h-5 mr-3 text-gray-500" />
-                <span className="text-base font-medium text-gray-700">自定义角色形象</span>
+                <span className="text-base font-medium text-gray-700">{t('character.advanced')}</span>
               </div>
               <span className="text-sm text-gray-500">
-                {showAdvanced ? '收起' : '展开'}
+                {showAdvanced ? t('character.advanced.collapse') : t('character.advanced.expand')}
               </span>
             </Button>
           </div>
@@ -202,27 +209,27 @@ export default function CharacterSetupPage() {
               <CardHeader className="pb-4">
                 <CardTitle className="flex items-center text-lg">
                   <Sparkles className="w-5 h-5 mr-2 text-blue-500" />
-                  智能角色形象设计
+                  {t('character.ai.title')}
                 </CardTitle>
                 <CardDescription>
-                  描述您想要的角色特征，AI将帮您完善关键细节。支持中文、英文、繁体输入，会用相同语言回复（约50字/词）
+                  {t('character.ai.description')}
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
                 {/* 用户输入描述 */}
                 <div className="space-y-3">
                   <Label htmlFor="customDescription" className="text-base font-medium text-gray-700">
-                    角色特征描述
+                    {t('character.ai.input.label')}
                   </Label>
-                                      <Textarea
+                  <Textarea
                       id="customDescription"
-                      placeholder="中文：一个穿着蓝色毛衣的小男孩，有着卷曲的棕色头发｜English: A boy with blue sweater and curly hair｜繁體：穿著藍色毛衣的男孩"
+                      placeholder={t('character.ai.input.placeholder')}
                       value={characterData.customDescription}
                       onChange={(e) => setCharacterData(prev => ({ ...prev, customDescription: e.target.value }))}
                       className="min-h-[100px] text-base rounded-xl border-gray-200 focus:border-blue-500"
                     />
                   <p className="text-sm text-gray-500">
-                    💡 支持中文、英文、繁体中文输入，AI会用相同语言回复。您可以描述任何特征，即使不完整也没关系！
+                    {t('character.ai.input.note')}
                   </p>
                 </div>
 
@@ -236,12 +243,12 @@ export default function CharacterSetupPage() {
                     {isOptimizing ? (
                       <>
                         <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        AI完善中...
+                        {t('character.ai.optimizing')}
                       </>
                     ) : (
                       <>
                         <Sparkles className="w-4 h-4 mr-2" />
-                        智能完善形象
+                        {t('character.ai.optimize')}
                       </>
                     )}
                   </Button>
@@ -251,16 +258,16 @@ export default function CharacterSetupPage() {
                 {characterData.optimizedDescription && (
                   <div className="space-y-3">
                     <Label className="text-base font-medium text-gray-700">
-                      完善后的角色形象
+                      {t('character.ai.result.label')}
                     </Label>
                     <Textarea
                       value={characterData.optimizedDescription}
                       onChange={(e) => setCharacterData(prev => ({ ...prev, optimizedDescription: e.target.value }))}
                       className="min-h-[120px] text-base rounded-xl border-green-200 focus:border-green-500 bg-green-50"
-                      placeholder="AI完善后的角色形象描述将显示在这里，保持您使用的语言，您可以继续编辑..."
+                      placeholder={t('character.ai.result.label')}
                     />
                     <p className="text-sm text-gray-500">
-                      ✨ AI已帮您完善角色形象描述，保持您使用的语言。系统会在生成图像时自动优化为最佳格式
+                      {t('character.ai.result.note')}
                     </p>
                     
                     {/* 操作按钮 */}
@@ -270,7 +277,7 @@ export default function CharacterSetupPage() {
                         onClick={() => setCharacterData(prev => ({ ...prev, optimizedDescription: '' }))}
                         className="text-sm px-4 py-2"
                       >
-                        清除重新开始
+                        {t('character.ai.clear')}
                       </Button>
                       <Button
                         onClick={handleOptimizeDescription}
@@ -281,12 +288,12 @@ export default function CharacterSetupPage() {
                         {isOptimizing ? (
                           <>
                             <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-                            重新完善中...
+                            {t('character.ai.reoptimizing')}
                           </>
                         ) : (
                           <>
                             <Sparkles className="w-3 h-3 mr-1" />
-                            重新完善
+                            {t('character.ai.reoptimize')}
                           </>
                         )}
                       </Button>
@@ -308,13 +315,13 @@ export default function CharacterSetupPage() {
             className="w-full sm:w-auto px-4 sm:px-6 py-3 rounded-xl border-gray-200 hover:bg-gray-50 order-2 sm:order-1"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
-            返回首页
+            {t('character.back')}
           </Button>
           <Button
             onClick={handleNext}
             className="w-full sm:w-auto bg-blue-500 hover:bg-blue-600 text-white px-6 sm:px-8 py-3 rounded-xl order-1 sm:order-2"
           >
-            下一步
+            {t('character.next')}
             <ArrowRight className="w-4 h-4 ml-2" />
           </Button>
         </div>

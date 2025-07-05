@@ -6,6 +6,7 @@ import {
   getStandardCharacterDefinition,
   getEnhancedCharacterDefinition
 } from './characterConsistency.js';
+import { buildMultilingualPrompt, translateCharacterDescriptionToEnglish } from './promptTranslator.js';
 
 // 获取后端API地址 - 使用相对路径
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
@@ -548,15 +549,15 @@ function generateFallbackTranslation(description, basicInfo) {
  * @param {Object} params - 生成参数 
  * @returns {Promise<Object>} 生成的绘本内容
  */
-export async function generatePictureBook({ character, story, content, onProgress, imageEngine, useCharacterConsistency = true }) {
+export async function generatePictureBook({ character, story, content, onProgress, imageEngine, useCharacterConsistency = true, userLanguage = 'zh-CN' }) {
   try {
     // 选择合适的模型
     const modelName = TASK_MODEL_MAPPING['STORY_GENERATION'];
     const modelConfig = QWEN_MODELS[modelName];
     const defaultImageEngine = imageEngine || 'liblibai'; // 默认使用LiblibAI
     
-    // 构建提示词
-    const prompt = buildPrompt({ character, story, content });
+    // 构建多语言提示词（发送给API的始终是英语）
+    const promptData = buildMultilingualPrompt({ character, story, content }, userLanguage);
 
     console.log('🧠 通义千问模型选择结果:');
     console.log('- 故事生成模型:', modelName, '(' + modelConfig.description + ')');
@@ -569,219 +570,96 @@ export async function generatePictureBook({ character, story, content, onProgres
       messages: [
         {
           role: "system",
-          content: `你是一位顶级的自闭症儿童教育专家和专业绘本创作师。你的任务是创作既生动有趣又适合自闭症儿童的高质量教学绘本。
-
-**核心创作理念**：
-- 语言简单但故事生动：用最简单的词汇讲述最有趣的故事
-- 深度教育意义：每个故事都要有明确的教学价值，适合课堂使用
-- 完美图文对应：插画描述必须精确反映故事内容，确保图文一致
-- 绝对角色一致性：主角外貌特征在整个故事中不得有任何变化
-
-**特殊教育专业要求**：
-1. 语言特点：简单直白但富有感染力，避免抽象概念
-2. 情节设计：生动有趣且贴近生活，有适度戏剧张力但结局积极
-3. 教育价值：深刻的品德教育和技能培养，适合老师教学讨论
-4. 角色塑造：鲜明的人物形象，行为示范明确具体
-5. 场景描述：详细准确的英文插画描述，确保视觉呈现完美
-
-**质量标准**：
-- 故事要让孩子想反复阅读，但理解无障碍
-- 教育内容要深入浅出，老师容易展开教学
-- 每页插画描述要让插画师能创作出与故事完美匹配的图像
-- 角色外貌描述要精确一致，确保整本书的视觉连贯性
-
-**重要格式要求**：
-- 必须返回有效的JSON格式
-- 文本内容中避免使用中文引号（" " ' '）
-- 如需引用对话，请使用英文引号或省略引号
-- 确保JSON结构完整准确
-
-请严格按照用户的详细要求创作，确保生成高质量的专业教学绘本内容。`
+          content: promptData.systemPrompt
         },
         {
           role: "user",
-          content: prompt
+          content: promptData.userPrompt
         }
       ],
-      temperature: 0.2,  // 使用较低温度确保JSON格式稳定
-      top_p: 0.8,        // 降低随机性，提高输出一致性
-      max_tokens: Math.min(modelConfig.maxTokens, 16384)  // 确保符合API限制
+      temperature: 0.7,
+      max_tokens: modelConfig.maxTokens
     }, 'STORY_GENERATION');
 
-    const generatedContent = response.choices[0].message.content;
-    console.log('通义千问返回的原始内容:', generatedContent);
-    onProgress && onProgress('故事内容生成完成，正在解析...', 50);
+    console.log('✅ 通义千问API调用成功');
+    onProgress && onProgress('解析故事内容...', 40);
     
-    // 解析返回的JSON
-    let parsedContent;
-    try {
-      parsedContent = parseJsonContent(generatedContent);
-    } catch (parseError) {
-      console.error('JSON解析错误:', parseError);
-      console.log('原始内容前200字符:', generatedContent.substring(0, 200));
-      console.log('原始内容后200字符:', generatedContent.substring(generatedContent.length - 200));
-      
-      // 改进的JSON提取和清理逻辑
-      try {
-        // 方法1：寻找最完整的JSON结构
-        const jsonMatches = generatedContent.match(/\{[\s\S]*\}/g);
-        if (jsonMatches && jsonMatches.length > 0) {
-          // 选择最长的匹配项（可能最完整）
-          let bestMatch = jsonMatches.reduce((longest, current) => 
-            current.length > longest.length ? current : longest
-          );
-          
-          // 更全面的JSON清理
-          bestMatch = bestMatch
-            .replace(/`/g, '"')                    // 反引号替换为双引号
-            .replace(/'/g, '"')                    // 单引号替换为双引号
-            .replace(/[\u2018\u2019]/g, '"')       // 智能引号替换
-            .replace(/[\u201C\u201D]/g, '"')       // 智能双引号替换
-            .replace(/\n\s*\n/g, '\n')             // 清理多余换行
-            .replace(/,\s*}/g, '}')                // 清理结尾多余逗号
-            .replace(/,\s*]/g, ']')                // 清理数组结尾多余逗号
-            .replace(/\t/g, ' ')                   // 制表符替换为空格
-            .replace(/\r/g, '');                   // 清理回车符
-          
-          parsedContent = JSON.parse(bestMatch);
-        } else {
-          // 方法2：尝试从第一个{开始到最后一个}结束
-          const startIdx = generatedContent.indexOf('{');
-          const endIdx = generatedContent.lastIndexOf('}');
-          
-          if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
-            let extractedJson = generatedContent.substring(startIdx, endIdx + 1);
-            
-            // 应用同样的清理逻辑
-            extractedJson = extractedJson
-              .replace(/`/g, '"')
-              .replace(/'/g, '"')
-              .replace(/[\u2018\u2019]/g, '"')
-              .replace(/[\u201C\u201D]/g, '"')
-              .replace(/\n\s*\n/g, '\n')
-              .replace(/,\s*}/g, '}')
-              .replace(/,\s*]/g, ']')
-              .replace(/\t/g, ' ')
-              .replace(/\r/g, '');
-            
-            parsedContent = JSON.parse(extractedJson);
-          } else {
-            throw new Error('无法在响应中找到有效的JSON结构');
-          }
-        }
-      } catch (secondError) {
-        console.error('二次JSON解析也失败:', secondError);
-        console.log('清理后的内容:', secondError.message);
-        
-        // 提供更详细的错误信息
-        const errorPos = secondError.message.match(/position (\d+)/);
-        if (errorPos) {
-          const pos = parseInt(errorPos[1]);
-          const context = generatedContent.substring(Math.max(0, pos - 50), pos + 50);
-          console.log('错误位置上下文:', context);
-        }
-        
-        throw new Error(`无法解析通义千问返回的内容: ${parseError.message}
-        
-🔍 详细错误信息：
-- 初始解析错误：${parseError.message}
-- 二次解析错误：${secondError.message}
-- 内容长度：${generatedContent.length}字符
-- 建议：请检查通义千问API返回的内容格式是否正确`);
-      }
+    // 解析返回的JSON内容
+    const rawContent = response.choices[0].message.content;
+    console.log('📝 原始API响应:', rawContent);
+    
+    const storyData = parseJsonContent(rawContent);
+    console.log('📖 解析后的故事数据:', storyData);
+    
+    // 确保stories数组存在
+    if (!storyData.pages || !Array.isArray(storyData.pages)) {
+      throw new Error('故事数据格式不正确：缺少pages数组');
     }
-
-    // 为每页生成插画
-    console.log('开始生成插画，使用引擎:', imageEngine, '角色一致性:', useCharacterConsistency);
-    onProgress && onProgress('正在生成插画...', 60);
-
-    const imageResult = await generateImagesForPages(
-      parsedContent.pages,
-      character,
+    
+    onProgress && onProgress('故事生成完成，开始生成插画...', 50);
+    
+    // 生成插画
+    const illustrationResult = await generateImagesForPages(
+      storyData.pages, 
+      character, 
       defaultImageEngine,
-      (current, total) => {
-        const imageProgress = 60 + (current / total) * 35; // 60-95%
-        onProgress && onProgress(`正在生成第${current}/${total}页插画...`, imageProgress);
+      (currentPage, totalPages) => {
+        const progress = 50 + (currentPage / totalPages) * 40;
+        onProgress && onProgress(`生成第${currentPage}页插画 (${currentPage}/${totalPages})`, progress);
       },
       useCharacterConsistency
     );
-
-    onProgress && onProgress('生成完成！', 100);
-
+    
+    console.log('🎨 所有插画生成完成');
+    onProgress && onProgress('绘本创作完成！', 100);
+    
     return {
-      ...parsedContent,
-      pages: imageResult.pages,
-      imageEngine: defaultImageEngine,
-      storyModel: modelName,
-      characterConsistency: useCharacterConsistency,
-      characterDefinition: imageResult.characterDefinition || null,
-      masterImageUrl: imageResult.masterImageUrl || null,
-      contentMode: content.mode,
-      finalEducationalTopic: content.educationalTopic || content.finalTopic
+      ...storyData,
+      pages: illustrationResult.pages,
+      characterDefinition: illustrationResult.characterDefinition,
+      masterImageUrl: illustrationResult.masterImageUrl,
+      language: userLanguage,
+      createdAt: new Date().toISOString()
     };
     
   } catch (error) {
-    console.error('生成绘本失败:', error);
+    console.error('❌ 绘本生成失败:', error);
     
-    onProgress && onProgress('生成失败，正在分析错误原因...', 95);
-    
-    // 分析错误类型并给出精确指导
-    if (error.message.includes('频率限制') || error.message.includes('429')) {
-      console.log('📋 错误分析: 通义千问API频率限制');
-      onProgress && onProgress('❌ API频率限制：建议等待5-10分钟后重试', 100);
+    // 如果是API调用失败，使用备用方案
+    if (error.message.includes('API') || error.message.includes('网络')) {
+      console.log('🔄 API失败，使用备用生成方案...');
+      onProgress && onProgress('使用备用方案生成绘本...', 80);
       
-      throw new Error(`通义千问API频率限制：${error.message}
-
-🔧 解决建议：
-1. 等待5-10分钟后再次尝试
-2. 检查通义千问账户的API使用配额
-3. 考虑升级到更高的使用计划
-4. 错开使用高峰时段
-
-💡 系统已进行智能重试，但API服务器持续返回频率限制。`);
-      
-    } else if (error.message.includes('配额') || error.message.includes('quota')) {
-      console.log('📋 错误分析: 通义千问API配额不足');
-      onProgress && onProgress('❌ API配额不足：请充值通义千问账户', 100);
-      
-      throw new Error(`通义千问API配额不足：${error.message}
-
-🔧 解决建议：
-1. 登录阿里云控制台检查账户余额
-2. 为通义千问服务充值
-3. 检查当前的API使用计划
-4. 考虑升级到更高的使用计划
-
-💳 这通常意味着您的通义千问账户余额已用完，需要充值后才能继续使用。`);
-      
-    } else if (error.message.includes('网络') || error.message.includes('fetch')) {
-      console.log('📋 错误分析: 网络连接问题');
-      onProgress && onProgress('❌ 网络连接异常：请检查网络后重试', 100);
-      
-      throw new Error(`网络连接异常：${error.message}
-
-🔧 解决建议：
-1. 检查您的网络连接状态
-2. 尝试刷新页面后重试
-3. 如果使用VPN，尝试切换节点
-4. 检查防火墙设置是否阻止了API访问
-
-🌐 系统无法连接到通义千问服务器，请确保网络连接正常。`);
-      
-    } else {
-      console.log('📋 错误分析: 其他API错误');
-      onProgress && onProgress('❌ API调用失败：请稍后重试', 100);
-      
-      throw new Error(`通义千问API调用失败：${error.message}
-
-🔧 解决建议：
-1. 稍等几分钟后重试
-2. 检查通义千问服务状态
-3. 确认API密钥配置正确
-4. 如果问题持续，请联系技术支持
-
-⚠️ 这是一个未预期的API错误，建议稍后重试或检查服务状态。`);
+      try {
+        const fallbackContent = generateFallbackContent({ character, story, content });
+        const illustrationResult = await generateImagesForPages(
+          fallbackContent.pages,
+          character,
+          imageEngine || 'liblibai',
+          (currentPage, totalPages) => {
+            const progress = 80 + (currentPage / totalPages) * 15;
+            onProgress && onProgress(`生成第${currentPage}页插画 (${currentPage}/${totalPages})`, progress);
+          },
+          useCharacterConsistency
+        );
+        
+        return {
+          ...fallbackContent,
+          pages: illustrationResult.pages,
+          characterDefinition: illustrationResult.characterDefinition,
+          masterImageUrl: illustrationResult.masterImageUrl,
+          language: userLanguage,
+          createdAt: new Date().toISOString(),
+          isFallback: true
+        };
+        
+      } catch (fallbackError) {
+        console.error('❌ 备用方案也失败了:', fallbackError);
+        throw new Error('故事生成失败，请检查网络连接或稍后重试');
+      }
     }
+    
+    throw error;
   }
 }
 
