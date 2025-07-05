@@ -1,0 +1,200 @@
+# 通义千问API Node.js 调用指南
+
+## 1. 概述
+
+本文档旨在为Node.js开发者提供一份详细的通义千问API调用指南，涵盖从API Key获取到实际代码实现的每一个步骤和参数说明。通义千问API支持OpenAI兼容模式，这意味着您可以使用与OpenAI API相似的方式进行调用。
+
+## 2. 准备工作
+
+### 2.1 获取API Key
+
+在调用通义千问API之前，您需要先获取API Key。请访问阿里云百炼控制台，按照指引获取您的API Key。
+
+### 2.2 配置API Key到环境变量
+
+为了安全起见，建议将API Key配置到环境变量中，而不是直接写入代码。在Node.js项目中，您可以使用`process.env`来访问环境变量。
+
+### 2.3 安装SDK (可选)
+
+通义千问API支持OpenAI兼容模式，因此您可以使用OpenAI官方或兼容的SDK进行调用。如果您选择使用HTTP方式直接调用，则无需安装SDK。
+
+## 3. API调用详情 (OpenAI 兼容模式)
+
+### 3.1 Base URL 和 Endpoint
+
+在OpenAI兼容模式下，通义千问API的Base URL和Endpoint如下：
+
+*   **Base URL (用于SDK配置):** `https://dashscope.aliyuncs.com/compatible-mode/v1`
+*   **Endpoint (用于HTTP调用):** `POST https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions`
+
+### 3.2 请求体 (Request Body)
+
+通义千问API的请求体结构与OpenAI的Chat Completions API类似。以下是主要的参数说明：
+
+| 参数名 | 类型 | 是否必需 | 描述 |
+|---|---|---|---|
+| `model` | String | 是 | 指定要使用的模型，例如 `qwen-turbo` 或 `qwen-plus`。 |
+| `messages` | Array | 是 | 包含对话消息的数组。每条消息是一个对象，包含 `role` (角色，如 `user`, `assistant`, `system`) 和 `content` (消息内容)。 |
+| `temperature` | Number | 否 | 控制生成文本的随机性。值越大，生成结果越随机；值越小，生成结果越确定。取值范围通常为 0 到 1。 |
+| `top_p` | Number | 否 | 核采样参数。与 `temperature` 类似，用于控制生成文本的多样性。 |
+| `stream` | Boolean | 否 | 是否以流式方式返回结果。如果设置为 `true`，则会分块返回结果。 |
+
+**`messages` 数组示例:**
+
+```json
+[
+  {
+    "role": "system",
+    "content": "You are a helpful assistant."
+  },
+  {
+    "role": "user",
+    "content": "Hello, how are you?"
+  }
+]
+```
+
+### 3.3 响应体 (Response Body)
+
+API的响应体将包含生成的文本内容。在非流式模式下，响应体通常包含以下字段：
+
+| 参数名 | 类型 | 描述 |
+|---|---|---|
+| `id` | String | 唯一标识符。 |
+| `object` | String | 对象类型，通常为 `chat.completion`。 |
+| `created` | Integer | 创建时间戳。 |
+| `model` | String | 使用的模型名称。 |
+| `choices` | Array | 包含生成结果的数组。每个元素包含 `message` (生成的回复消息) 和 `finish_reason` (结束原因)。 |
+
+**`choices` 数组示例:**
+
+```json
+[
+  {
+    "index": 0,
+    "message": {
+      "role": "assistant",
+      "content": "I'm doing well, thank you! How can I help you today?"
+    },
+    "finish_reason": "stop"
+  }
+]
+```
+
+在流式模式下，响应会分块返回，每块包含部分生成内容。您需要处理这些分块以构建完整的响应。
+
+## 4. Node.js 代码示例
+
+本节将提供使用Node.js调用通义千问API的示例代码。我们将展示两种主要方式：使用`axios`进行HTTP请求和使用OpenAI兼容SDK。
+
+### 4.1 使用 `axios` 进行 HTTP 请求
+
+首先，确保您已安装 `axios`：
+
+```bash
+npm install axios
+```
+
+**示例代码:**
+
+```javascript
+const axios = require('axios');
+
+async function callTongyiQianwenApi(prompt) {
+  const apiKey = process.env.TONGYI_QIANWEN_API_KEY; // 确保已配置环境变量
+  if (!apiKey) {
+    console.error('API Key not found in environment variables.');
+    return;
+  }
+
+  const url = 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions';
+
+  try {
+    const response = await axios.post(url, {
+      model: 'qwen-turbo', // 或 'qwen-plus'
+      messages: [
+        { role: 'system', content: 'You are a helpful assistant.' },
+        { role: 'user', content: prompt }
+      ],
+      temperature: 0.7,
+      top_p: 1.0,
+      stream: false // 设置为 true 以启用流式输出
+    }, {
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      }
+    });
+
+    console.log('API Response:', response.data.choices[0].message.content);
+    return response.data.choices[0].message.content;
+  } catch (error) {
+    console.error('Error calling Tongyi Qianwen API:', error.response ? error.response.data : error.message);
+  }
+}
+
+// 示例调用
+// callTongyiQianwenApi('请给我讲一个关于人工智能的笑话。');
+```
+
+### 4.2 使用 OpenAI 兼容 SDK (例如 `openai` 库)
+
+首先，安装 `openai` 库：
+
+```bash
+npm install openai
+```
+
+**示例代码:**
+
+```javascript
+const OpenAI = require('openai');
+
+async function callTongyiQianwenWithSdk(prompt) {
+  const apiKey = process.env.TONGYI_QIANWEN_API_KEY; // 确保已配置环境变量
+  if (!apiKey) {
+    console.error('API Key not found in environment variables.');
+    return;
+  }
+
+  const openai = new OpenAI({
+    apiKey: apiKey,
+    baseURL: 'https://dashscope.aliyuncs.com/compatible-mode/v1' // 通义千问的兼容模式Base URL
+  });
+
+  try {
+    const chatCompletion = await openai.chat.completions.create({
+      model: 'qwen-turbo', // 或 'qwen-plus'
+      messages: [
+        { role: 'system', content: 'You are a helpful assistant.' },
+        { role: 'user', content: prompt }
+      ],
+      temperature: 0.7,
+      top_p: 1.0,
+      stream: false,
+    });
+
+    console.log('SDK Response:', chatCompletion.choices[0].message.content);
+    return chatCompletion.choices[0].message.content;
+  } catch (error) {
+    console.error('Error calling Tongyi Qianwen API with SDK:', error.message);
+  }
+}
+
+// 示例调用
+// callTongyiQianwenWithSdk('请给我写一首关于夏天的诗。');
+```
+
+## 5. 错误处理
+
+在实际应用中，您需要对API调用可能出现的错误进行处理，例如网络问题、API Key无效、请求参数错误等。在上述示例代码中，我们使用了 `try-catch` 块来捕获并打印错误信息。
+
+## 6. 总结
+
+通过本文档，您应该已经了解了如何在Node.js项目中调用通义千问API。无论是直接使用HTTP请求还是通过OpenAI兼容SDK，核心都是构建正确的请求体并处理响应。请务必妥善保管您的API Key，并根据实际需求调整模型和参数。
+
+## 7. 参考文献
+
+[1] 阿里云百炼控制台 - 通义千问API文档: [https://bailian.console.aliyun.com/?spm=5176.29619931.J_AHgvE-XDhTWrtotIBlDQQ.13.1369521che6G3s&tab=api#/api/?type=model&url=https%3A%2F%2Fhelp.aliyun.com%2Fdocument_detail%2F2712576.html&renderType=iframe](https://bailian.console.aliyun.com/?spm=5176.29619931.J_AHgvE-XDhTWrtotIBlDQQ.13.1369521che6G3s&tab=api#/api/?type=model&url=https%3A%2F%2Fhelp.aliyun.com%2Fdocument_detail%2F2712576.html&renderType=iframe)
+
+

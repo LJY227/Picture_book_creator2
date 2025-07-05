@@ -11,7 +11,7 @@ import { generatePictureBook } from '@/lib/qwen.js'
 
 export default function ContentSetupPage() {
   const navigate = useNavigate()
-  const { currentLanguage } = useLanguage()
+  const { currentLanguage, t } = useLanguage()
   const [contentData, setContentData] = useState({
     isCustom: false,
     customContent: '',
@@ -33,16 +33,16 @@ export default function ContentSetupPage() {
   }, [navigate])
 
   const randomEducationalTopics = [
-    '学会分享与合作',
-    '培养勇敢和自信',
-    '理解友谊的重要性',
-    '学习解决问题的方法',
-    '培养责任感',
-    '学会感恩和善良',
-    '理解诚实的价值',
-    '学习时间管理',
-    '培养创造力和想象力',
-    '学会尊重他人'
+    t('content.topics.shareAndCooperate'),
+    t('content.topics.braveAndConfident'),
+    t('content.topics.friendship'),
+    t('content.topics.problemSolving'),
+    t('content.topics.responsibility'),
+    t('content.topics.gratitudeAndKindness'),
+    t('content.topics.honesty'),
+    t('content.topics.timeManagement'),
+    t('content.topics.creativity'),
+    t('content.topics.respect')
   ]
 
   // 处理主题示例选择
@@ -58,7 +58,7 @@ export default function ContentSetupPage() {
 
   const handleGenerate = async () => {
     setIsGenerating(true)
-    setGenerationStatus('正在准备生成参数...')
+    setGenerationStatus(t('content.status.preparing'))
 
     try {
       // 获取之前保存的数据
@@ -84,7 +84,7 @@ export default function ContentSetupPage() {
         // 模式3：用户选择自定义教学内容（直接使用用户输入，不再分析）
         contentMode = 'custom';
         educationalTopic = contentData.customContent; // 直接使用用户输入的内容
-        setGenerationStatus('正在准备自定义教学内容...')
+        setGenerationStatus(t('content.status.customContent'))
         setGenerationProgress(10)
       } else if (contentData.selectedTopic) {
         // 模式2：用户选择了主题示例
@@ -104,7 +104,7 @@ export default function ContentSetupPage() {
         finalTopic: educationalTopic // 最终确定的教学主题
       }
 
-      setGenerationStatus('正在调用通义千问生成故事内容...')
+      setGenerationStatus(t('content.status.generating'))
       setGenerationProgress(20)
 
       // 调用API生成绘本内容（现在只有一次API调用）
@@ -124,7 +124,7 @@ export default function ContentSetupPage() {
         }
       })
 
-      setGenerationStatus('正在保存生成的内容...')
+      setGenerationStatus(t('content.status.saving'))
 
       // 调试信息
       console.log('ContentSetupPage - 生成的绘本数据:', generatedBook);
@@ -140,7 +140,7 @@ export default function ContentSetupPage() {
       const savedBook = localStorage.getItem('generatedBook');
       console.log('ContentSetupPage - 保存到localStorage的数据:', savedBook);
 
-      setGenerationStatus('生成完成！')
+      setGenerationStatus(t('content.status.complete'))
 
       // 短暂延迟后跳转
       setTimeout(() => {
@@ -156,23 +156,23 @@ export default function ContentSetupPage() {
       const fullErrorMessage = error.message || '未知错误';
       
       // 提取错误的主要部分作为状态显示
-      let statusMessage = '生成失败';
+      let statusMessage = t('content.status.failed');
       let waitTime = 12000; // 默认12秒
       
       if (fullErrorMessage.includes('频率限制') || fullErrorMessage.includes('429')) {
-        statusMessage = '❌ API频率限制：已进行8次重试仍失败，请等待15-30分钟后重试';
+        statusMessage = t('content.status.frequencyLimit');
         waitTime = 15000; // 15秒显示时间
       } else if (fullErrorMessage.includes('配额') || fullErrorMessage.includes('quota')) {
-        statusMessage = '❌ API配额不足：请检查通义千问账户余额并充值';
+        statusMessage = t('content.status.quotaExceeded');
         waitTime = 12000;
       } else if (fullErrorMessage.includes('网络') || fullErrorMessage.includes('fetch')) {
-        statusMessage = '❌ 网络连接异常：请检查网络连接状态';
+        statusMessage = t('content.status.networkError');
         waitTime = 10000;
       } else if (fullErrorMessage.includes('unauthorized') || fullErrorMessage.includes('401')) {
-        statusMessage = '❌ API密钥无效：请检查API密钥配置';
+        statusMessage = t('content.status.unauthorized');
         waitTime = 12000;
       } else {
-        statusMessage = '❌ 生成失败：请稍后重试或检查服务状态';
+        statusMessage = t('content.status.generalError');
         waitTime = 10000;
       }
       
@@ -197,11 +197,11 @@ export default function ContentSetupPage() {
   // 获取当前选择状态的描述
   const getSelectionStatus = () => {
     if (contentData.isCustom) {
-      return '自定义教学内容模式'
+      return t('content.mode.custom.active')
     } else if (contentData.selectedTopic) {
       return `已选择主题：${contentData.selectedTopic}`
     } else {
-      return '智能随机生成模式'
+      return t('content.mode.random.active')
     }
   }
 
@@ -210,8 +210,8 @@ export default function ContentSetupPage() {
       <div className="min-h-screen bg-white flex flex-col items-center justify-center px-4">
         <div className="text-center max-w-sm sm:max-w-md mx-auto w-full">
           <Loader2 className="w-16 h-16 text-blue-500 animate-spin mx-auto mb-6" />
-          <h2 className="text-2xl font-medium text-gray-800 mb-4">正在生成您的专属绘本...</h2>
-          <p className="text-gray-500 mb-6">{generationStatus || '请稍候，我们正在为您创造一个精彩的故事'}</p>
+                      <h2 className="text-2xl font-medium text-gray-800 mb-4">{t('content.title')}</h2>
+          <p className="text-gray-500 mb-6">{generationStatus || t('content.status.waiting')}</p>
 
           {/* 进度条 */}
           <div className="w-full bg-gray-200 rounded-full h-3 mb-4">
@@ -354,14 +354,14 @@ export default function ContentSetupPage() {
                   <h3 className={`text-lg font-semibold mb-2 ${
                     contentData.isCustom ? 'text-blue-900' : 'text-gray-800'
                   }`}>
-                    自定义教学内容
+                    {t('content.mode.custom')}
                   </h3>
                   <p className={`text-sm leading-relaxed ${
                     contentData.isCustom ? 'text-blue-700' : 'text-gray-600'
                   }`}>
                     {contentData.isCustom 
-                      ? '您已开启自定义模式，AI将分析您的描述并生成相应的教学内容'
-                      : '默认使用AI智能生成教学内容，或从下方主题示例中选择'
+                                    ? t('content.mode.custom.description')
+              : t('content.mode.default.description')
                     }
                   </p>
                 </div>
@@ -381,7 +381,7 @@ export default function ContentSetupPage() {
                 <span className={`text-xs font-medium ${
                   contentData.isCustom ? 'text-blue-600' : 'text-gray-500'
                 }`}>
-                  {contentData.isCustom ? '开启' : '关闭'}
+                  {contentData.isCustom ? t('content.switch.on') : t('content.switch.off')}
                 </span>
               </div>
             </div>
@@ -399,7 +399,7 @@ export default function ContentSetupPage() {
                 <span className={`text-sm font-medium ${
                   contentData.isCustom ? 'text-blue-800' : 'text-gray-600'
                 }`}>
-                  {contentData.isCustom ? '自定义模式已激活' : '智能生成模式'}
+                  {contentData.isCustom ? t('content.mode.custom.title') : t('content.mode.smart.title')}
                 </span>
               </div>
             </div>
@@ -410,11 +410,11 @@ export default function ContentSetupPage() {
             <div className="space-y-4 animate-in slide-in-from-top-2 duration-300">
               <div className="bg-blue-50 border border-blue-200 rounded-xl p-6">
                 <Label htmlFor="customContent" className="text-lg font-semibold text-blue-900 mb-3 block">
-                  请描述您希望的教学内容
+                  {t('content.topic')}
                 </Label>
                 <Textarea
                   id="customContent"
-                  placeholder="请详细描述您希望绘本传达的教学内容或价值观，例如：&#10;• 学会分享玩具和食物&#10;• 培养面对困难的勇气&#10;• 理解友谊的珍贵和维护&#10;• 学习基本的礼貌用语&#10;• 培养独立自主的能力..."
+                  placeholder={t('content.custom.placeholder')}
                   value={contentData.customContent}
                   onChange={(e) => setContentData(prev => ({ ...prev, customContent: e.target.value }))}
                   className="min-h-[140px] text-base rounded-xl border-blue-300 focus:border-blue-500 resize-none bg-white"
@@ -432,12 +432,12 @@ export default function ContentSetupPage() {
           {!contentData.isCustom && (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <Label className="text-base font-medium text-gray-700">智能生成主题示例</Label>
+                <Label className="text-base font-medium text-gray-700">{t('content.mode.random')}</Label>
                 {contentData.selectedTopic && (
-                  <span className="text-sm text-blue-600 bg-blue-50 px-3 py-1 rounded-full flex items-center">
-                    <CheckCircle className="w-4 h-4 mr-1" />
-                    已选择主题
-                  </span>
+                                      <span className="text-sm text-blue-600 bg-blue-50 px-3 py-1 rounded-full flex items-center">
+                      <CheckCircle className="w-4 h-4 mr-1" />
+                      {t('content.topics.selectedLabel')}
+                    </span>
                 )}
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -464,8 +464,8 @@ export default function ContentSetupPage() {
                 <p className="text-sm text-gray-600 text-center">
                   💡 <strong>提示：</strong>
                   {contentData.selectedTopic 
-                    ? `已选择"${contentData.selectedTopic}"主题。点击其他主题可以切换，或再次点击取消选择。`
-                    : '点击任何主题示例来选择，或保持不选择让系统智能随机生成。'
+                    ? t('content.topics.selected', { topic: contentData.selectedTopic })
+                    : t('content.topics.instructions')
                   }
                 </p>
               </div>
@@ -483,14 +483,14 @@ export default function ContentSetupPage() {
             className="w-full sm:w-auto px-4 sm:px-6 py-3 rounded-xl border-gray-200 hover:bg-gray-50 order-2 sm:order-1"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
-            上一步
+            {t('content.back')}
           </Button>
           <Button
             onClick={handleGenerate}
             className="w-full sm:w-auto bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white px-6 sm:px-8 py-3 rounded-xl font-medium shadow-lg hover:shadow-xl transition-all duration-300 order-1 sm:order-2"
           >
             <Sparkles className="w-4 h-4 mr-2" />
-            立即生成绘本
+            {t('content.next')}
           </Button>
         </div>
       </div>

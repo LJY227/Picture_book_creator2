@@ -5,9 +5,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Slider } from '@/components/ui/slider.jsx'
 import { ArrowLeft, ArrowRight, BookOpen } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
+import { useLanguage } from '@/contexts/LanguageContext.jsx'
 
 export default function StorySetupPage() {
   const navigate = useNavigate()
+  const { t } = useLanguage()
   const [storyData, setStoryData] = useState({
     type: '',
     pages: 6
@@ -22,10 +24,10 @@ export default function StorySetupPage() {
   }, [navigate])
 
   const storyTypes = [
-    { value: 'adventure', label: '冒险故事' },
-    { value: 'growth', label: '成长故事' },
-    { value: 'friendship', label: '友情故事' },
-    { value: 'life-skills', label: '生活技能' }
+    { value: 'adventure', label: t('story.type.adventure') },
+    { value: 'growth', label: t('story.type.growth') },
+    { value: 'friendship', label: t('story.type.friendship') },
+    { value: 'life-skills', label: t('story.type.lifeSkills') }
   ]
 
   const handleNext = () => {
@@ -52,9 +54,9 @@ export default function StorySetupPage() {
         <div className="max-w-2xl mx-auto flex items-center justify-between">
           <div className="flex items-center">
             <BookOpen className="w-6 h-6 text-blue-500 mr-3" />
-            <h1 className="text-xl font-medium text-gray-800">故事设定</h1>
+            <h1 className="text-xl font-medium text-gray-800">{t('story.title')}</h1>
           </div>
-          <div className="text-sm text-gray-500">步骤 2/3</div>
+          <div className="text-sm text-gray-500">{t('story.step')}</div>
         </div>
         
         {/* 进度条 */}
@@ -71,14 +73,14 @@ export default function StorySetupPage() {
           {/* 故事类型 */}
           <div className="space-y-4">
             <Label className="text-base font-medium text-gray-700">
-              故事类型
+              {t('story.type')}
             </Label>
             <Select
               value={storyData.type}
               onValueChange={(value) => setStoryData(prev => ({ ...prev, type: value }))}
             >
               <SelectTrigger className="w-full text-base py-3 rounded-xl border-gray-200 focus:border-blue-500">
-                <SelectValue placeholder="请选择故事类型（可选，留空将随机选择）" />
+                <SelectValue placeholder={t('story.type.placeholder')} />
               </SelectTrigger>
               <SelectContent>
                 {storyTypes.map((type) => (
@@ -88,13 +90,13 @@ export default function StorySetupPage() {
                 ))}
               </SelectContent>
             </Select>
-            <p className="text-sm text-gray-500">选择适合的故事主题，帮助孩子学习和成长</p>
+            <p className="text-sm text-gray-500">{t('story.type.description')}</p>
           </div>
 
           {/* 故事页数 */}
           <div className="space-y-6">
             <Label className="text-base font-medium text-gray-700">
-              故事页数：{storyData.pages} 页
+              {t('story.pages.count', { count: storyData.pages })}
             </Label>
             <div className="px-4">
               <Slider
@@ -106,21 +108,21 @@ export default function StorySetupPage() {
                 className="w-full"
               />
               <div className="flex justify-between text-sm text-gray-500 mt-2">
-                <span>4页</span>
-                <span>7页</span>
-                <span>10页</span>
+                <span>{t('story.pages.min')}</span>
+                <span>{t('story.pages.mid')}</span>
+                <span>{t('story.pages.max')}</span>
               </div>
             </div>
-            <p className="text-sm text-gray-500">推荐6-8页，适合孩子的注意力时长</p>
+            <p className="text-sm text-gray-500">{t('story.pages.description')}</p>
           </div>
 
           {/* 预览卡片 */}
           <div className="bg-blue-50 rounded-2xl p-6 border border-blue-100">
-            <h3 className="text-lg font-medium text-blue-800 mb-3">故事预览</h3>
+            <h3 className="text-lg font-medium text-blue-800 mb-3">{t('story.preview')}</h3>
             <div className="space-y-2 text-sm text-blue-700">
-              <p>• 故事类型：{storyData.type ? storyTypes.find(t => t.value === storyData.type)?.label : '随机选择'}</p>
-              <p>• 故事长度：{storyData.pages} 页</p>
-              <p>• 预计阅读时间：{Math.ceil(storyData.pages * 1.5)} 分钟</p>
+              <p>• {t('story.preview.type', { type: storyData.type ? storyTypes.find(t => t.value === storyData.type)?.label : t('story.preview.random') })}</p>
+              <p>• {t('story.preview.length', { pages: storyData.pages })}</p>
+              <p>• {t('story.preview.duration', { minutes: Math.ceil(storyData.pages * 1.5) })}</p>
             </div>
           </div>
         </div>
@@ -135,13 +137,13 @@ export default function StorySetupPage() {
             className="w-full sm:w-auto px-4 sm:px-6 py-3 rounded-xl border-gray-200 hover:bg-gray-50 order-2 sm:order-1"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
-            上一步
+            {t('story.back')}
           </Button>
           <Button
             onClick={handleNext}
             className="w-full sm:w-auto bg-blue-500 hover:bg-blue-600 text-white px-6 sm:px-8 py-3 rounded-xl order-1 sm:order-2"
           >
-            下一步
+            {t('character.next')}
             <ArrowRight className="w-4 h-4 ml-2" />
           </Button>
         </div>
