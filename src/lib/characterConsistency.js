@@ -628,13 +628,16 @@ async function generateCustomCharacterDefinition(character) {
     // 如果有优化后的描述，使用优化后的；否则使用原始描述
     const descriptionToUse = character.optimizedDescription || customDescription;
     
-    // 调用优化函数生成角色描述（用户语言）
-    const optimizedDescription = await optimizeCharacterDescription(descriptionToUse, basicInfo);
+    // 自定义角色强制使用通义千问API进行优化和翻译
+    console.log('🚀 自定义角色模式：强制使用通义千问API确保高质量描述');
+    
+    // 调用优化函数生成角色描述（用户语言），强制使用API
+    const optimizedDescription = await optimizeCharacterDescription(descriptionToUse, basicInfo, true);
     
     console.log('✅ 角色描述优化完成（用户语言）:', optimizedDescription);
     
-    // 为图像生成将描述翻译为英文
-    const englishDescription = await translateDescriptionToEnglish(optimizedDescription, basicInfo);
+    // 为图像生成将描述翻译为英文，强制使用API
+    const englishDescription = await translateDescriptionToEnglish(optimizedDescription, basicInfo, true);
     
     console.log('✅ 英文描述生成完成（图像生成用）:', englishDescription);
     console.log('🔄 语言处理流程: 原始描述 → 优化描述（用户语言）→ 英文描述（图像生成）');

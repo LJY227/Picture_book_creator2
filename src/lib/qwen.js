@@ -520,26 +520,32 @@ async function callQwenChat(options, taskType = 'FAST_PROCESSING', retryCount = 
  * 使用通义千问优化角色描述
  * @param {string} userDescription - 用户输入的角色描述
  * @param {Object} basicInfo - 基础角色信息
+ * @param {boolean} forceAPI - 是否强制使用API（自定义角色时为true）
  * @returns {Promise<string>} 优化后的角色描述
  */
-export async function optimizeCharacterDescription(userDescription, basicInfo = {}) {
+export async function optimizeCharacterDescription(userDescription, basicInfo = {}, forceAPI = false) {
   const { age = 6, gender = 'any', identity = 'human' } = basicInfo;
   
-  // 优先使用本地优化逻辑
-  try {
-    const localOptimized = optimizeCharacterLocally(userDescription, basicInfo);
-    if (localOptimized) {
-      console.log('🏠 使用本地角色优化:', { 
-        original: userDescription, 
-        enhanced: localOptimized 
-      });
-      return localOptimized;
+  // 检查是否强制使用API（自定义角色功能）
+  if (forceAPI) {
+    console.log('🚀 自定义角色模式 - 强制使用通义千问API进行角色优化');
+  } else {
+    // 非自定义角色时，优先使用本地优化逻辑
+    try {
+      const localOptimized = optimizeCharacterLocally(userDescription, basicInfo);
+      if (localOptimized) {
+        console.log('🏠 使用本地角色优化:', { 
+          original: userDescription, 
+          enhanced: localOptimized 
+        });
+        return localOptimized;
+      }
+    } catch (error) {
+      console.warn('本地优化失败，尝试API优化:', error);
     }
-  } catch (error) {
-    console.warn('本地优化失败，尝试API优化:', error);
   }
   
-  if (!apiController.canCallAPI()) {
+  if (!apiController.canCallAPI() && !forceAPI) {
     console.log('⚠️ API调用已达限制，使用简化本地处理');
     return generateFallbackCharacterDescription(userDescription, basicInfo);
   }
@@ -548,27 +554,53 @@ export async function optimizeCharacterDescription(userDescription, basicInfo = 
     console.log('🤖 使用通义千问进行角色优化...');
     apiController.recordAPICall();
     
+    // 针对自定义角色构建更详细的提示词
+    const promptContent = forceAPI 
+      ? `请详细优化这个角色描述，保持原有特征的同时补充更多生动的细节：
+
+原始描述："${userDescription}"
+角色信息：${age}岁${gender === 'boy' ? '男孩' : gender === 'girl' ? '女孩' : '孩子'}
+
+请补充以下细节（控制在80字内）：
+1. 详细的外貌特征（发型、眼睛、脸型等）
+2. 具体的服装描述（颜色、款式）
+3. 表情和神态
+4. 突出的个性特征
+
+要求：
+- 保持原描述的核心特征不变
+- 语言生动具体
+- 适合儿童绘本
+- 中文回复`
+      : `请优化角色描述："${userDescription}"，${age}岁${gender === 'boy' ? '男孩' : gender === 'girl' ? '女孩' : '孩子'}，补充外貌、服装、表情，50字内：`;
+    
     const response = await callQwenChat({
       messages: [
         {
           role: "user",
-          content: `请优化角色描述："${userDescription}"，${age}岁${gender === 'boy' ? '男孩' : gender === 'girl' ? '女孩' : '孩子'}，补充外貌、服装、表情，50字内：`
+          content: promptContent
         }
       ],
       temperature: 0.7,
-      max_tokens: 100
+      max_tokens: forceAPI ? 150 : 100
     }, 'CHARACTER_OPTIMIZATION');
 
     const optimizedDescription = response.choices[0].message.content.trim();
     console.log('✅ 通义千问角色优化完成:', { 
       original: userDescription, 
-      enhanced: optimizedDescription 
+      enhanced: optimizedDescription,
+      mode: forceAPI ? 'API强制模式' : '标准模式'
     });
     
     return optimizedDescription;
     
   } catch (error) {
     console.error('通义千问角色优化失败，使用本地备用方案:', error);
+    if (forceAPI) {
+      console.warn('⚠️ 自定义角色API优化失败，降级到增强本地处理');
+      // 自定义角色时，即使API失败也使用增强的本地处理
+      return optimizeCharacterLocally(userDescription, basicInfo, true); // true表示增强模式
+    }
     return generateFallbackCharacterDescription(userDescription, basicInfo);
   }
 }
@@ -577,24 +609,30 @@ export async function optimizeCharacterDescription(userDescription, basicInfo = 
  * 使用通义千问翻译描述为英文
  * @param {string} description - 中文描述
  * @param {Object} basicInfo - 基础信息
+ * @param {boolean} forceAPI - 是否强制使用API（自定义角色时为true）
  * @returns {Promise<string>} 英文翻译
  */
-export async function translateDescriptionToEnglish(description, basicInfo = {}) {
-  // 优先使用本地翻译逻辑
-  try {
-    const localTranslated = translateLocally(description, basicInfo);
-    if (localTranslated) {
-      console.log('🏠 使用本地翻译:', { 
-        original: description, 
-        translated: localTranslated 
-      });
-      return localTranslated;
+export async function translateDescriptionToEnglish(description, basicInfo = {}, forceAPI = false) {
+  // 检查是否强制使用API（自定义角色功能）
+  if (forceAPI) {
+    console.log('🚀 自定义角色模式 - 强制使用通义千问API进行翻译');
+  } else {
+    // 非自定义角色时，优先使用本地翻译逻辑
+    try {
+      const localTranslated = translateLocally(description, basicInfo);
+      if (localTranslated) {
+        console.log('🏠 使用本地翻译:', { 
+          original: description, 
+          translated: localTranslated 
+        });
+        return localTranslated;
+      }
+    } catch (error) {
+      console.warn('本地翻译失败，尝试API翻译:', error);
     }
-  } catch (error) {
-    console.warn('本地翻译失败，尝试API翻译:', error);
   }
   
-  if (!apiController.canCallAPI()) {
+  if (!apiController.canCallAPI() && !forceAPI) {
     console.log('⚠️ API调用已达限制，使用简化本地翻译');
     return generateFallbackTranslation(description, basicInfo);
   }
@@ -603,15 +641,32 @@ export async function translateDescriptionToEnglish(description, basicInfo = {})
     console.log('🤖 使用通义千问进行翻译...');
     apiController.recordAPICall();
     
+    // 针对自定义角色构建更详细的翻译提示词
+    const promptContent = forceAPI 
+      ? `请将以下中文角色描述精确翻译为英文，适用于图像生成AI：
+
+原中文描述："${description}"
+
+翻译要求：
+1. 保持所有细节完整（颜色、服装、发型、表情等）
+2. 使用适合图像生成的英文描述格式
+3. 确保描述生动具体，便于AI理解
+4. 语法正确，词汇精准
+5. 保持儿童绘本风格的用词
+6. 只返回翻译结果，不要额外说明
+
+请直接返回英文翻译：`
+      : `请将以下中文描述翻译为英文，保持原意和细节：\n"${description}"`;
+    
     const response = await callQwenChat({
       messages: [
         {
           role: "user",
-          content: `请将以下中文描述翻译为英文，保持原意和细节：\n"${description}"`
+          content: promptContent
         }
       ],
       temperature: 0.3,
-      max_tokens: 200
+      max_tokens: forceAPI ? 250 : 200
     }, 'TRANSLATION');
 
     const translatedText = response.choices[0].message.content.trim();
@@ -620,47 +675,74 @@ export async function translateDescriptionToEnglish(description, basicInfo = {})
     
     console.log('✅ 通义千问翻译完成:', { 
       original: description, 
-      translated: cleanTranslation 
+      translated: cleanTranslation,
+      mode: forceAPI ? 'API强制模式' : '标准模式'
     });
     
     return cleanTranslation;
     
   } catch (error) {
     console.error('通义千问翻译失败，使用本地备用方案:', error);
+    if (forceAPI) {
+      console.warn('⚠️ 自定义角色API翻译失败，降级到增强本地处理');
+      // 自定义角色时，即使API失败也尝试更好的本地翻译
+      return translateLocally(description, basicInfo) || generateFallbackTranslation(description, basicInfo);
+    }
     return generateFallbackTranslation(description, basicInfo);
   }
 }
 
 // 本地角色描述优化函数
-function optimizeCharacterLocally(userDescription, basicInfo) {
+function optimizeCharacterLocally(userDescription, basicInfo, enhanced = false) {
   const { age = 6, gender = 'any', identity = 'human' } = basicInfo;
   
-  // 检查缓存
-  const cacheKey = `char_${userDescription}_${age}_${gender}_${identity}`;
+  // 检查缓存（增强模式使用不同的缓存键）
+  const cacheKey = `char_${userDescription}_${age}_${gender}_${identity}_${enhanced}`;
   if (LOCAL_PROCESSING.cache.has(cacheKey)) {
     console.log('💾 使用缓存的角色描述');
     return LOCAL_PROCESSING.cache.get(cacheKey);
   }
 
-  // 简单的本地优化逻辑
   let optimized = userDescription;
   
-  // 添加年龄描述
-  if (!optimized.includes('岁') && !optimized.includes('年龄')) {
-    optimized = `${age}岁的${optimized}`;
-  }
-  
-  // 添加性别信息
-  if (gender === 'boy' && !optimized.includes('男') && !optimized.includes('小男孩')) {
-    optimized = optimized.replace(/孩子|小孩/, '小男孩');
-  } else if (gender === 'girl' && !optimized.includes('女') && !optimized.includes('小女孩')) {
-    optimized = optimized.replace(/孩子|小孩/, '小女孩');
-  }
-  
-  // 添加基本外貌描述
-  if (!optimized.includes('眼睛') && !optimized.includes('头发')) {
-    const features = ['大眼睛', '黑头发', '可爱的笑容'];
-    optimized += `，有着${features.join('和')}`;
+  if (enhanced) {
+    // 增强模式：更详细的本地优化（当API失败时的高质量备用方案）
+    console.log('🔧 使用增强本地优化模式');
+    
+    // 保持原有描述的完整性，只进行必要的补充
+    if (!optimized.includes('岁')) {
+      optimized = `${age}岁的${optimized}`;
+    }
+    
+    // 智能性别匹配
+    if (gender === 'boy' && !optimized.includes('男') && !optimized.includes('小男孩')) {
+      optimized = optimized.replace(/(?:孩子|小孩|小朋友)/, '小男孩');
+    } else if (gender === 'girl' && !optimized.includes('女') && !optimized.includes('小女孩')) {
+      optimized = optimized.replace(/(?:孩子|小孩|小朋友)/, '小女孩');
+    }
+    
+    // 保持原有细节，不过度添加
+    if (!optimized.includes('眼睛') && !optimized.includes('头发') && !optimized.includes('脸')) {
+      // 只在必要时添加基本特征
+      optimized += '，有着天真可爱的表情';
+    }
+    
+  } else {
+    // 标准模式：简单的本地优化逻辑
+    if (!optimized.includes('岁') && !optimized.includes('年龄')) {
+      optimized = `${age}岁的${optimized}`;
+    }
+    
+    if (gender === 'boy' && !optimized.includes('男') && !optimized.includes('小男孩')) {
+      optimized = optimized.replace(/孩子|小孩/, '小男孩');
+    } else if (gender === 'girl' && !optimized.includes('女') && !optimized.includes('小女孩')) {
+      optimized = optimized.replace(/孩子|小孩/, '小女孩');
+    }
+    
+    if (!optimized.includes('眼睛') && !optimized.includes('头发')) {
+      const features = ['大眼睛', '黑头发', '可爱的笑容'];
+      optimized += `，有着${features.join('和')}`;
+    }
   }
   
   // 缓存结果
