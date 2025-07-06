@@ -922,7 +922,8 @@ export async function generatePictureBook({ character, story, content, onProgres
         const progress = 50 + (currentPage / totalPages) * 40;
         onProgress && onProgress(`生成第${currentPage}页插画 (${currentPage}/${totalPages})`, progress);
       },
-      useCharacterConsistency
+      useCharacterConsistency,
+      storyData.secondaryCharacters // 传入次要角色定义
     );
     
     console.log('🎨 所有插画生成完成');
@@ -955,7 +956,8 @@ export async function generatePictureBook({ character, story, content, onProgres
             const progress = 80 + (currentPage / totalPages) * 15;
             onProgress && onProgress(`生成第${currentPage}页插画 (${currentPage}/${totalPages})`, progress);
           },
-          useCharacterConsistency
+          useCharacterConsistency,
+          null // 备用方案没有次要角色定义
         );
         
         return {
@@ -1006,6 +1008,46 @@ function buildPrompt({ character, story, content }) {
     contentModeNote = '\n\n**特别注意**：本故事采用智能随机生成模式，请确保内容丰富有趣，充满教育价值。';
   }
 
+  // 根据主角身份生成其他角色的种族指导
+  const getSecondaryCharacterGuidance = (character) => {
+    const identity = character.identity || 'human';
+    const characterDesc = character.customDescription || character.optimizedDescription || characterDescription;
+    
+    if (identity === 'animal') {
+      // 检测主角是什么动物
+      const desc = characterDesc.toLowerCase();
+      let animalType = 'animals';
+      
+      if (desc.includes('dog') || desc.includes('puppy') || desc.includes('狗')) {
+        animalType = 'dogs';
+      } else if (desc.includes('cat') || desc.includes('kitten') || desc.includes('猫')) {
+        animalType = 'cats';
+      } else if (desc.includes('rabbit') || desc.includes('bunny') || desc.includes('兔')) {
+        animalType = 'rabbits';
+      } else if (desc.includes('bear') || desc.includes('熊')) {
+        animalType = 'bears';
+      } else if (desc.includes('pig') || desc.includes('猪')) {
+        animalType = 'pigs';
+      } else if (desc.includes('fox') || desc.includes('狐狸')) {
+        animalType = 'foxes';
+      }
+      
+      return `
+【其他角色指导】
+- 家庭成员（如妈妈、爸爸、奶奶、爷爷等）：必须与主角保持同种动物特征，例如主角是小狗，妈妈就是狗妈妈，奶奶就是狗奶奶
+- 其他角色：应该是不同的动物朋友，如小猫、小兔子、小熊等，给每个角色一个可爱的名字和简单描述
+- 成人角色：如老师、医生、店主等，应该是成年的动物角色，保持友善和专业的形象`;
+    } else {
+      return `
+【其他角色指导】
+- 家庭成员（如妈妈、爸爸、奶奶、爷爷等）：应该是人类角色，与主角年龄相适应
+- 其他角色：可以是同龄的人类朋友，给每个角色一个名字和简单描述
+- 成人角色：如老师、医生、店主等，应该是成年的人类角色，保持友善和专业的形象`;
+    }
+  };
+
+  const secondaryCharacterGuidance = getSecondaryCharacterGuidance(character);
+
   return `请为自闭症儿童创作一个既生动有趣又具有深度教育意义的绘本故事。这个故事将被用于特殊教育教学，需要平衡趣味性和教育性。
 
 【角色设定】
@@ -1014,11 +1056,13 @@ function buildPrompt({ character, story, content }) {
 - 年龄：${character.age || 6}岁
 - 性格特点：${character.personality || '活泼开朗、善良友好'}
 
+${secondaryCharacterGuidance}
+
 【故事要求】
 - 故事类型：${storyTypes[story.type] || '成长故事'}
 - 教学主题：${educationalTopic}
 - 故事背景：${story.setting || '日常生活场景'}
-- 页数要求：6-8页
+- 页数要求：${story.pages || 6}页
 - 语言风格：简单易懂但充满感染力
 
 【教育目标】
@@ -1029,7 +1073,9 @@ ${content.educationalGoals || `通过故事帮助自闭症儿童学习"${educati
 2. 情节要有起承转合，但不能太复杂
 3. 要有明确的教育价值和行为示范
 4. 每页都需要详细的英文插画描述
-5. 主角外貌特征在所有页面中必须保持一致${contentModeNote}
+5. 主角外貌特征在所有页面中必须保持一致
+6. 其他角色的物种/身份必须与主角保持一致性（如主角是小狗，家人也应该是狗的形象）
+7. 在imagePrompt中明确描述每个角色的具体特征，确保角色识别清晰${contentModeNote}
 
 请严格按照以下JSON格式返回：
 
@@ -1038,11 +1084,19 @@ ${content.educationalGoals || `通过故事帮助自闭症儿童学习"${educati
   "title": "故事标题",
   "educationalTheme": "${educationalTopic}",
   "targetAge": "${character.age || 6}岁",
+  "secondaryCharacters": [
+    {
+      "name": "角色名称",
+      "description": "简单的中文描述",
+      "englishDescription": "详细的英文描述，用于插画生成",
+      "relationship": "与主角的关系（如：妈妈、朋友、老师等）"
+    }
+  ],
   "pages": [
     {
       "pageNumber": 1,
       "text": "第一页的故事文本",
-      "imagePrompt": "详细的英文插画描述，包含主角外貌、动作、表情、场景等"
+      "imagePrompt": "详细的英文插画描述，包含主角外貌、动作、表情、场景等，如果有其他角色出现，需要明确描述其特征"
     },
     {
       "pageNumber": 2,
@@ -1063,7 +1117,7 @@ ${content.educationalGoals || `通过故事帮助自闭症儿童学习"${educati
 /**
  * 为每页生成插画
  */
-async function generateImagesForPages(pages, character, imageEngine, onProgress, useCharacterConsistency = false) {
+async function generateImagesForPages(pages, character, imageEngine, onProgress, useCharacterConsistency = false, secondaryCharacters = null) {
   const results = {
     pages: [],
     characterDefinition: null,
@@ -1101,7 +1155,9 @@ async function generateImagesForPages(pages, character, imageEngine, onProgress,
         const result = await generateStoryIllustrationWithMaster(
           page.imagePrompt,
           results.masterImageUrl,
-          results.characterDefinition
+          results.characterDefinition,
+          null, // onProgress
+          secondaryCharacters
         );
         imageUrl = result.imageUrl;
       } else {
@@ -1172,33 +1228,40 @@ function buildLiblibImagePrompt(page, character) {
 function generateFallbackContent({ character, story, content }) {
   const characterName = character.name || '小主角';
   const educationalTopic = content.educationalTopic || content.finalTopic || '学会分享';
+  const pageCount = story.pages || 6; // 使用用户选择的页数
+  
+  const pages = [];
+  
+  // 生成用户指定数量的页面
+  for (let i = 1; i <= pageCount; i++) {
+    let text, imagePrompt;
+    
+    if (i === 1) {
+      text = `这是${characterName}，一个可爱的孩子。`;
+      imagePrompt = `A cute child character named ${characterName}, smiling happily`;
+    } else if (i === 2) {
+      text = `${characterName}今天要学习${educationalTopic}。`;
+      imagePrompt = `${characterName} in a learning situation, looking curious and interested`;
+    } else if (i === pageCount) {
+      text = `${characterName}很开心，因为学到了新知识。`;
+      imagePrompt = `${characterName} celebrating with joy, surrounded by friends or family`;
+    } else {
+      text = `${characterName}继续学习和成长，第${i}页的故事。`;
+      imagePrompt = `${characterName} in a learning and growing situation, page ${i} of the story`;
+    }
+    
+    pages.push({
+      pageNumber: i,
+      text: text,
+      imagePrompt: imagePrompt
+    });
+  }
   
   return {
     title: `${characterName}的${educationalTopic}故事`,
     educationalTheme: educationalTopic,
     targetAge: `${character.age || 6}岁`,
-    pages: [
-      {
-        pageNumber: 1,
-        text: `这是${characterName}，一个可爱的孩子。`,
-        imagePrompt: `A cute child character named ${characterName}, smiling happily`
-      },
-      {
-        pageNumber: 2,
-        text: `${characterName}今天要学习${educationalTopic}。`,
-        imagePrompt: `${characterName} in a learning situation, looking curious and interested`
-      },
-      {
-        pageNumber: 3,
-        text: `通过努力，${characterName}学会了很多。`,
-        imagePrompt: `${characterName} successfully demonstrating new skills, looking proud`
-      },
-      {
-        pageNumber: 4,
-        text: `${characterName}很开心，因为学到了新知识。`,
-        imagePrompt: `${characterName} celebrating with joy, surrounded by friends or family`
-      }
-    ],
+    pages: pages,
     educationalValue: `帮助孩子学习${educationalTopic}的重要性`,
     teachingPoints: [`理解${educationalTopic}的意义`, '学会实际应用', '培养相关习惯'],
     discussionQuestions: [`你觉得${educationalTopic}重要吗？`, `你会怎么做？`, '你学到了什么？']

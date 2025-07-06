@@ -341,13 +341,13 @@ function buildMasterCharacterPrompt(characterDef) {
  * @param {Function} onProgress - 进度回调
  * @returns {Promise<Object>} 生成结果
  */
-export async function generateStoryIllustrationWithMaster(sceneDescription, masterImageUrl, characterDef, onProgress = null) {
+export async function generateStoryIllustrationWithMaster(sceneDescription, masterImageUrl, characterDef, onProgress = null, secondaryCharacters = null) {
   try {
     console.log('🖼️ 基于主角形象生成插画...');
     onProgress && onProgress('正在基于主角形象生成插画...', 10);
     
     // 构建插画生成提示词
-    const illustrationPrompt = buildIllustrationPrompt(sceneDescription, characterDef);
+    const illustrationPrompt = buildIllustrationPrompt(sceneDescription, characterDef, secondaryCharacters);
     console.log('插画生成提示词:', illustrationPrompt);
     
     onProgress && onProgress('正在生成插画...', 30);
@@ -386,7 +386,7 @@ export async function generateStoryIllustrationWithMaster(sceneDescription, mast
     console.error('❌ 基于主角形象生成插画失败:', error);
     
     // 如果失败，使用文生图作为备选
-    return await generateStoryIllustrationFallback(sceneDescription, characterDef, onProgress);
+    return await generateStoryIllustrationFallback(sceneDescription, characterDef, onProgress, secondaryCharacters);
   }
 }
 
@@ -397,10 +397,10 @@ export async function generateStoryIllustrationWithMaster(sceneDescription, mast
  * @param {Function} onProgress - 进度回调
  * @returns {Promise<Object>} 生成结果
  */
-async function generateStoryIllustrationFallback(sceneDescription, characterDef, onProgress = null) {
+async function generateStoryIllustrationFallback(sceneDescription, characterDef, onProgress = null, secondaryCharacters = null) {
   try {
     console.log('🔄 使用文生图备选方案生成插画...');
-    const illustrationPrompt = buildIllustrationPrompt(sceneDescription, characterDef);
+    const illustrationPrompt = buildIllustrationPrompt(sceneDescription, characterDef, secondaryCharacters);
     
     onProgress && onProgress('使用文生图模式生成插画...', 50);
     
@@ -444,9 +444,44 @@ async function generateStoryIllustrationFallback(sceneDescription, characterDef,
  * @param {string} sceneDescription - 场景描述
  * @returns {string} 其他角色的描述
  */
-function identifyOtherCharacters(sceneDescription) {
+function identifyOtherCharacters(sceneDescription, characterDef = null, secondaryCharacters = null) {
   const description = sceneDescription.toLowerCase();
   const otherCharacters = [];
+  
+  // 获取主角信息，避免重复添加相同类型的角色
+  const mainCharacterType = characterDef ? getCharacterType(characterDef) : null;
+  
+  // 优先使用AI生成的次要角色定义
+  if (secondaryCharacters && secondaryCharacters.length > 0) {
+    console.log('🎭 使用AI生成的次要角色定义');
+    
+    // 检测场景中提到的次要角色
+    secondaryCharacters.forEach(char => {
+      const charName = char.name.toLowerCase();
+      const charRelation = char.relationship.toLowerCase();
+      
+      // 检测是否在场景描述中提到了这个角色
+      if (description.includes(charName) || 
+          description.includes(charRelation) ||
+          (charRelation.includes('妈妈') && (description.includes('mother') || description.includes('mom') || description.includes('妈妈'))) ||
+          (charRelation.includes('爸爸') && (description.includes('father') || description.includes('dad') || description.includes('爸爸'))) ||
+          (charRelation.includes('奶奶') && (description.includes('grandma') || description.includes('奶奶'))) ||
+          (charRelation.includes('爷爷') && (description.includes('grandpa') || description.includes('爷爷'))) ||
+          (charRelation.includes('老师') && (description.includes('teacher') || description.includes('老师'))) ||
+          (charRelation.includes('朋友') && (description.includes('friend') || description.includes('朋友')))) {
+        
+        console.log(`🎭 添加次要角色: ${char.name} (${char.relationship})`);
+        otherCharacters.push(char.englishDescription);
+      }
+    });
+    
+    // 如果AI生成的角色定义已经覆盖了场景，优先使用AI定义
+    if (otherCharacters.length > 0) {
+      return otherCharacters.length > 0 ? `, ${otherCharacters.join(', ')}` : '';
+    }
+  }
+  
+  console.log('🎭 使用预定义的次要角色定义');
   
   // 检测朋友
   if (description.includes('friend') || description.includes('朋友')) {
@@ -484,21 +519,51 @@ function identifyOtherCharacters(sceneDescription) {
     otherCharacters.push(SUPPORTING_CHARACTER_DEFINITIONS.adult.shopkeeper);
   }
   
-  // 检测动物朋友
-  if (description.includes('dog') || description.includes('狗')) {
+  // 检测动物朋友（只有当主角不是该类型动物时才添加）
+  if ((description.includes('dog') || description.includes('狗')) && mainCharacterType !== 'dog') {
     otherCharacters.push(SUPPORTING_CHARACTER_DEFINITIONS.animalFriend.dog);
   }
-  if (description.includes('cat') || description.includes('猫')) {
+  if ((description.includes('cat') || description.includes('猫')) && mainCharacterType !== 'cat') {
     otherCharacters.push(SUPPORTING_CHARACTER_DEFINITIONS.animalFriend.cat);
   }
-  if (description.includes('bird') || description.includes('鸟')) {
+  if ((description.includes('bird') || description.includes('鸟')) && mainCharacterType !== 'bird') {
     otherCharacters.push(SUPPORTING_CHARACTER_DEFINITIONS.animalFriend.bird);
   }
-  if (description.includes('rabbit') || description.includes('兔子')) {
+  if ((description.includes('rabbit') || description.includes('兔子')) && mainCharacterType !== 'rabbit') {
     otherCharacters.push(SUPPORTING_CHARACTER_DEFINITIONS.animalFriend.rabbit);
   }
   
   return otherCharacters.length > 0 ? `, ${otherCharacters.join(', ')}` : '';
+}
+
+/**
+ * 获取主角类型，用于避免重复添加相同类型的支持角色
+ * @param {Object} characterDef - 角色定义
+ * @returns {string|null} 角色类型
+ */
+function getCharacterType(characterDef) {
+  if (!characterDef || !characterDef.description) return null;
+  
+  const description = characterDef.description.toLowerCase();
+  
+  // 检测动物类型
+  if (description.includes('dog') || description.includes('puppy') || description.includes('狗')) {
+    return 'dog';
+  }
+  if (description.includes('cat') || description.includes('kitten') || description.includes('猫')) {
+    return 'cat';
+  }
+  if (description.includes('rabbit') || description.includes('bunny') || description.includes('兔')) {
+    return 'rabbit';
+  }
+  if (description.includes('bird') || description.includes('鸟')) {
+    return 'bird';
+  }
+  if (description.includes('bear') || description.includes('熊')) {
+    return 'bear';
+  }
+  
+  return null;
 }
 
 /**
@@ -507,9 +572,9 @@ function identifyOtherCharacters(sceneDescription) {
  * @param {Object} characterDef - 角色定义
  * @returns {string} 插画生成提示词
  */
-function buildIllustrationPrompt(sceneDescription, characterDef) {
-  // 识别其他角色
-  const otherCharactersDesc = identifyOtherCharacters(sceneDescription);
+function buildIllustrationPrompt(sceneDescription, characterDef, secondaryCharacters = null) {
+  // 识别其他角色，传入角色定义避免重复添加相同类型的角色
+  const otherCharactersDesc = identifyOtherCharacters(sceneDescription, characterDef, secondaryCharacters);
   
   // 在角色一致性模式中，由于已经有主角参考图片，使用简化的角色描述
   // 避免详细的角色描述与场景描述冲突
@@ -518,6 +583,8 @@ function buildIllustrationPrompt(sceneDescription, characterDef) {
   console.log('🎨 角色一致性模式 - 使用简化角色描述，避免与参考图片冲突');
   console.log('🎨 原始角色描述:', characterDef.description);
   console.log('🎨 简化角色描述:', simplifiedCharacterDesc);
+  console.log('🎨 主角类型:', getCharacterType(characterDef));
+  console.log('🎨 其他角色描述:', otherCharactersDesc);
   
   return `Safe, family-friendly, children's book style, ${simplifiedCharacterDesc}${otherCharactersDesc}, ${sceneDescription}, ${characterDef.visualStyle}, appropriate for children, wholesome, innocent, educational`;
 }
