@@ -40,10 +40,6 @@ export async function regeneratePageIllustration(pageData, characterData, option
     }
 
     if (onProgress) onProgress('正在分析页面内容...', 10);
-    
-    // 生成增强的场景描述
-    const illustrationPrompt = buildIllustrationPrompt(pageData, characterData);
-    console.log('生成的插画提示词:', illustrationPrompt);
 
     let result = null;
 
@@ -56,7 +52,7 @@ export async function regeneratePageIllustration(pageData, characterData, option
         pageData, 
         characterData, 
         referenceImageUrl, 
-        illustrationPrompt, 
+        useEnhancedPrompt, 
         onProgress
       );
     }
@@ -81,7 +77,7 @@ export async function regeneratePageIllustration(pageData, characterData, option
       console.log('角色一致性模式失败，尝试LiblibAI文生图...');
       if (onProgress) onProgress('尝试LiblibAI文生图...', 60);
       
-      result = await regenerateWithLiblibAI(pageData, characterData, illustrationPrompt, onProgress);
+      result = await regenerateWithLiblibAI(pageData, characterData, useEnhancedPrompt, onProgress);
     }
 
     // 如果LiblibAI也失败，尝试DALL-E 3
@@ -89,7 +85,7 @@ export async function regeneratePageIllustration(pageData, characterData, option
       console.log('LiblibAI失败，尝试DALL-E 3...');
       if (onProgress) onProgress('尝试DALL-E 3...', 80);
       
-      result = await regenerateWithDALLE3(pageData, characterData, illustrationPrompt, onProgress);
+      result = await regenerateWithDALLE3(pageData, characterData, useEnhancedPrompt, onProgress);
     }
 
     // 如果所有方法都失败，生成emoji回退
@@ -132,8 +128,8 @@ async function regenerateWithImageToImage(pageData, characterData, referenceImag
     // 导入LiblibAI图生图功能
     const { generateImageToImageComplete } = await import('./liblibai.js');
     
-    // 构建提示词
-    let prompt = buildIllustrationPrompt(pageData, characterData);
+    // 构建提示词（图生图模式使用简化角色描述，避免与参考图片重复）
+    let prompt = buildIllustrationPrompt(pageData, characterData, true);
     
     if (enhancedPrompt) {
       prompt += ', enhanced quality, more detailed, better composition, professional illustration';
@@ -248,8 +244,8 @@ async function regenerateWithCharacterConsistency(pageData, characterData, maste
  */
 async function regenerateWithLiblibAI(pageData, characterData, enhancedPrompt, onProgress) {
   try {
-    // 构建提示词
-    let prompt = buildIllustrationPrompt(pageData, characterData);
+    // 构建提示词（文生图模式使用完整角色描述）
+    let prompt = buildIllustrationPrompt(pageData, characterData, false);
     
     if (enhancedPrompt) {
       prompt += ', enhanced quality, more detailed, better composition, professional illustration';
@@ -932,8 +928,16 @@ function analyzeContentKeywords(content) {
 /**
  * 构建插画生成提示词
  */
-function buildIllustrationPrompt(pageData, characterData) {
-  const characterDescription = generateCharacterDescription(characterData);
+function buildIllustrationPrompt(pageData, characterData, useMinimalCharacterDescription = false) {
+  // 根据模式选择角色描述级别
+  let characterDescription;
+  if (useMinimalCharacterDescription) {
+    // 最小化角色描述（用于图生图模式，因为已经有参考图片）
+    characterDescription = `the main character`;
+  } else {
+    // 完整角色描述（用于文生图模式）
+    characterDescription = generateCharacterDescription(characterData);
+  }
   
   // 优先使用sceneDescription，如果没有则基于页面内容生成
   let sceneDescription = pageData.sceneDescription;
@@ -952,9 +956,10 @@ function buildIllustrationPrompt(pageData, characterData) {
   }
   
   console.log('最终场景描述:', sceneDescription);
+  console.log('角色描述模式:', useMinimalCharacterDescription ? '简化模式' : '完整模式');
   
   // 确保提示词完全是英文，避免图片中出现文字，强化无文字指令
-  return `Children's book illustration, ${characterDescription}, ${sceneDescription}, cute cartoon style, simple 2D art, bright colors, child-friendly, educational, wholesome, appropriate for children aged 3-7, clean background, storybook style by Flavia Sorrentino, NO TEXT, NO WORDS, NO LETTERS, NO CHINESE CHARACTERS, NO WRITING, illustration only, pure visual storytelling, text-free artwork`;
+  return `Children's book illustration, ${characterDescription} ${sceneDescription}, cute cartoon style, simple 2D art, bright colors, child-friendly, educational, wholesome, appropriate for children aged 3-7, clean background, storybook style by Flavia Sorrentino, NO TEXT, NO WORDS, NO LETTERS, NO CHINESE CHARACTERS, NO WRITING, illustration only, pure visual storytelling, text-free artwork`;
 }
 
 /**

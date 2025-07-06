@@ -511,7 +511,15 @@ function buildIllustrationPrompt(sceneDescription, characterDef) {
   // 识别其他角色
   const otherCharactersDesc = identifyOtherCharacters(sceneDescription);
   
-  return `Safe, family-friendly, children's book style, ${characterDef.description}${otherCharactersDesc}, ${sceneDescription}, ${characterDef.visualStyle}, appropriate for children, wholesome, innocent, educational`;
+  // 在角色一致性模式中，由于已经有主角参考图片，使用简化的角色描述
+  // 避免详细的角色描述与场景描述冲突
+  const simplifiedCharacterDesc = `the main character`;
+  
+  console.log('🎨 角色一致性模式 - 使用简化角色描述，避免与参考图片冲突');
+  console.log('🎨 原始角色描述:', characterDef.description);
+  console.log('🎨 简化角色描述:', simplifiedCharacterDesc);
+  
+  return `Safe, family-friendly, children's book style, ${simplifiedCharacterDesc}${otherCharactersDesc}, ${sceneDescription}, ${characterDef.visualStyle}, appropriate for children, wholesome, innocent, educational`;
 }
 
 /**

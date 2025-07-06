@@ -422,7 +422,7 @@ const apiController = new APIUsageController();
  * @param {number} maxRetries - 最大重试次数
  * @returns {Promise<Object>} API响应
  */
-async function callQwenChat(options, taskType = 'FAST_PROCESSING', retryCount = 0, maxRetries = 3) {
+export async function callQwenChat(options, taskType = 'FAST_PROCESSING', retryCount = 0, maxRetries = 3) {
   try {
     // 选择合适的模型
     const modelName = TASK_MODEL_MAPPING[taskType] || 'qwen-turbo';
