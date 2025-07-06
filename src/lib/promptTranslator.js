@@ -41,7 +41,7 @@ const PROMPT_TEMPLATES = {
 - 故事类型：${params.storyType}
 - 教学主题：${params.educationalTopic}
 - 故事背景：${params.setting}
-- 页数要求：6-8页
+- 页数要求：${params.pageCount}页
 - 语言风格：简单易懂但充满感染力
 
 【教育目标】
@@ -52,7 +52,8 @@ ${params.educationalGoals}
 2. 情节要有起承转合，但不能太复杂
 3. 要有明确的教育价值和行为示范
 4. 每页都需要详细的英文插画描述
-5. 主角外貌特征在所有页面中必须保持一致${params.contentModeNote}
+5. 主角外貌特征在所有页面中必须保持一致
+6. 第一页不要介绍角色，直接开始故事情节${params.contentModeNote}
 
 请严格按照以下JSON格式返回：
 
@@ -116,7 +117,7 @@ ${params.educationalGoals}
 - 故事類型：${params.storyType}
 - 教學主題：${params.educationalTopic}
 - 故事背景：${params.setting}
-- 頁數要求：6-8頁
+- 頁數要求：${params.pageCount}頁
 - 語言風格：簡單易懂但充滿感染力
 
 【教育目標】
@@ -127,7 +128,8 @@ ${params.educationalGoals}
 2. 情節要有起承轉合，但不能太複雜
 3. 要有明確的教育價值和行為示範
 4. 每頁都需要詳細的英文插畫描述
-5. 主角外貌特徵在所有頁面中必須保持一致${params.contentModeNote}
+5. 主角外貌特徵在所有頁面中必須保持一致
+6. 第一頁不要介紹角色，直接開始故事情節${params.contentModeNote}
 
 請嚴格按照以下JSON格式返回：
 
@@ -191,7 +193,7 @@ ${params.educationalGoals}
 - Story Type: ${params.storyType}
 - Educational Theme: ${params.educationalTopic}
 - Story Setting: ${params.setting}
-- Page Requirement: 6-8 pages
+- Page Requirement: ${params.pageCount} pages
 - Language Style: Simple and easy to understand but full of appeal
 
 【Educational Goals】
@@ -202,7 +204,8 @@ ${params.educationalGoals}
 2. Plot should have beginning, development, climax, and resolution, but not too complex
 3. Must have clear educational value and behavioral examples
 4. Each page needs detailed English illustration descriptions
-5. Protagonist's appearance must remain consistent across all pages${params.contentModeNote}
+5. Protagonist's appearance must remain consistent across all pages
+6. First page should not introduce characters, start directly with the story plot${params.contentModeNote}
 
 Please return strictly in the following JSON format:
 
@@ -264,7 +267,7 @@ const ENGLISH_PROMPT_TEMPLATE = {
 - Story Type: ${params.storyType}
 - Educational Theme: ${params.educationalTopic}
 - Story Setting: ${params.setting}
-- Page Requirement: 6-8 pages
+- Page Requirement: ${params.pageCount} pages
 - Language Style: Simple and easy to understand but full of appeal
 
 【Educational Goals】
@@ -275,7 +278,8 @@ ${params.educationalGoals}
 2. Plot should have beginning, development, climax, and resolution, but not too complex
 3. Must have clear educational value and behavioral examples
 4. Each page needs detailed English illustration descriptions
-5. Protagonist's appearance must remain consistent across all pages${params.contentModeNote}
+5. Protagonist's appearance must remain consistent across all pages
+6. First page should not introduce characters, start directly with the story plot${params.contentModeNote}
 
 Please return strictly in the following JSON format:
 
@@ -366,6 +370,7 @@ export function buildMultilingualPrompt(params, userLanguage = 'zh-CN') {
     setting,
     educationalGoals,
     contentModeNote,
+    pageCount: story.pages || 6,
     targetLanguage: LANGUAGE_MAP[userLanguage] || 'Simplified Chinese'
   };
   

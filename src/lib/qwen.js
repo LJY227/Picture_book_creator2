@@ -556,22 +556,29 @@ export async function optimizeCharacterDescription(userDescription, basicInfo = 
     
     // 针对自定义角色构建更详细的提示词
     const promptContent = forceAPI 
-      ? `请详细优化这个角色描述，保持原有特征的同时补充更多生动的细节：
+      ? `请谨慎优化这个角色描述，严格保持用户的核心特征：
 
 原始描述："${userDescription}"
 角色信息：${age}岁${gender === 'boy' ? '男孩' : gender === 'girl' ? '女孩' : '孩子'}
 
-请补充以下细节（控制在80字内）：
-1. 详细的外貌特征（发型、眼睛、脸型等）
-2. 具体的服装描述（颜色、款式）
-3. 表情和神态
-4. 突出的个性特征
+【重要规则】：
+1. 绝对保持用户指定的核心特征：
+   - 如果用户说是动物（如小狗、小猫），必须保持动物身份，不能变成人类
+   - 如果用户指定了颜色（如黄色、蓝色），必须保持这些颜色
+   - 如果用户指定了基本特征（如大眼睛、黑头发），必须保持这些特征
+   - 如果用户指定了服装（如蓝色衣服），必须保持服装描述
 
-要求：
-- 保持原描述的核心特征不变
-- 语言生动具体
-- 适合儿童绘本
-- 中文回复`
+2. 只可以适当补充细节，不可以改变核心特征：
+   - 可以稍微丰富外貌描述（如眼睛的形状、头发的质感）
+   - 可以稍微丰富服装描述（如衣服的款式）
+   - 可以添加简单的表情或神态
+   - 绝对不能改变动物类型、基本颜色、核心特征
+
+3. 控制在60字内，语言生动但保守
+4. 适合儿童绘本风格
+5. 中文回复
+
+请基于上述规则优化描述：`
       : `请优化角色描述："${userDescription}"，${age}岁${gender === 'boy' ? '男孩' : gender === 'girl' ? '女孩' : '孩子'}，补充外貌、服装、表情，50字内：`;
     
     const response = await callQwenChat({
@@ -1237,8 +1244,8 @@ function generateFallbackContent({ character, story, content }) {
     let text, imagePrompt;
     
     if (i === 1) {
-      text = `这是${characterName}，一个可爱的孩子。`;
-      imagePrompt = `A cute child character named ${characterName}, smiling happily`;
+      text = `${characterName}今天要开始一个新的冒险。`;
+      imagePrompt = `A cute child character named ${characterName}, looking excited about starting a new adventure`;
     } else if (i === 2) {
       text = `${characterName}今天要学习${educationalTopic}。`;
       imagePrompt = `${characterName} in a learning situation, looking curious and interested`;
