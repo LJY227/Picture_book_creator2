@@ -1,10 +1,10 @@
 /**
- * LiblibAI Kontext自定义模型API集成模块
+ * LiblibAI Kontext API集成模块（使用StarFlow认证）
  * 支持文生图(text2image)和图生图(image2image)功能
  * 基于F.1 Kontext算法
  *
- * API文档: https://api.liblib.art
- * 认证方式: Bearer Token
+ * API端点: https://api.liblib.art
+ * 认证方式: StarFlow AccessKey + SecretKey + 签名
  */
 
 // LiblibAI Kontext API配置 - 使用相对路径
