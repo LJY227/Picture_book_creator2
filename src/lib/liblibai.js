@@ -103,6 +103,14 @@ export async function generateImageToImage(prompt, imageUrl, options = {}) {
 
     const result = await response.json();
     console.log('LiblibAI - 图生图请求成功:', result);
+    console.log('LiblibAI - 图生图响应结构分析:', {
+      hasData: !!result.data,
+      hasGenerateUuid: !!result.data?.generateUuid,
+      hasTaskId: !!result.task_id,
+      hasId: !!result.id,
+      keys: Object.keys(result),
+      dataKeys: result.data ? Object.keys(result.data) : null
+    });
 
     return result;
 
@@ -272,9 +280,31 @@ export async function generateTextToImageComplete(prompt, onProgress = null, opt
       const generateResponse = await generateTextToImage(safePrompt, options);
 
       // 根据LiblibAI API响应格式提取generateUuid
-      const taskId = generateResponse.data?.generateUuid || generateResponse.generateUuid || generateResponse.task_id || generateResponse.id;
+      console.log('LiblibAI - 文生图响应完整结构:', JSON.stringify(generateResponse, null, 2));
+      
+      const taskId = generateResponse.data?.generateUuid || 
+                     generateResponse.data?.taskId ||
+                     generateResponse.data?.task_id ||
+                     generateResponse.generateUuid || 
+                     generateResponse.taskId ||
+                     generateResponse.task_id || 
+                     generateResponse.id ||
+                     generateResponse.uuid;
+
+      console.log('LiblibAI - 尝试提取的任务ID:', {
+        'data.generateUuid': generateResponse.data?.generateUuid,
+        'data.taskId': generateResponse.data?.taskId,
+        'data.task_id': generateResponse.data?.task_id,
+        'generateUuid': generateResponse.generateUuid,
+        'taskId': generateResponse.taskId,
+        'task_id': generateResponse.task_id,
+        'id': generateResponse.id,
+        'uuid': generateResponse.uuid,
+        'finalTaskId': taskId
+      });
 
       if (!taskId) {
+        console.error('LiblibAI - 无法提取任务ID，完整响应:', generateResponse);
         throw new Error('未获取到生成任务ID');
       }
 
@@ -368,9 +398,31 @@ export async function generateImageToImageComplete(prompt, referenceImageUrl, on
       const generateResponse = await generateImageToImage(safePrompt, referenceImageUrl, options);
 
       // 根据LiblibAI API响应格式提取generateUuid
-      const taskId = generateResponse.data?.generateUuid || generateResponse.generateUuid || generateResponse.task_id || generateResponse.id;
+      console.log('LiblibAI - 图生图响应完整结构:', JSON.stringify(generateResponse, null, 2));
+      
+      const taskId = generateResponse.data?.generateUuid || 
+                     generateResponse.data?.taskId ||
+                     generateResponse.data?.task_id ||
+                     generateResponse.generateUuid || 
+                     generateResponse.taskId ||
+                     generateResponse.task_id || 
+                     generateResponse.id ||
+                     generateResponse.uuid;
+
+      console.log('LiblibAI - 尝试提取的任务ID:', {
+        'data.generateUuid': generateResponse.data?.generateUuid,
+        'data.taskId': generateResponse.data?.taskId,
+        'data.task_id': generateResponse.data?.task_id,
+        'generateUuid': generateResponse.generateUuid,
+        'taskId': generateResponse.taskId,
+        'task_id': generateResponse.task_id,
+        'id': generateResponse.id,
+        'uuid': generateResponse.uuid,
+        'finalTaskId': taskId
+      });
 
       if (!taskId) {
+        console.error('LiblibAI - 无法提取任务ID，完整响应:', generateResponse);
         throw new Error('未获取到生成任务ID');
       }
 
