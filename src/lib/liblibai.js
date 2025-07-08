@@ -283,32 +283,57 @@ export async function generateTextToImageComplete(prompt, onProgress = null, opt
       if (onProgress) onProgress(`正在发起图像生成请求...（尝试 ${attempt}/${maxRetries}）`, 10);
       const generateResponse = await generateTextToImage(safePrompt, options);
 
-      // 根据Kontext API响应格式提取taskId
-      console.log('LiblibAI - Kontext文生图响应完整结构:', JSON.stringify(generateResponse, null, 2));
-      
-      // Kontext API返回格式通常包含task_id字段
-      const taskId = generateResponse.task_id || 
-                     generateResponse.id ||
-                     generateResponse.taskId ||
-                     generateResponse.data?.task_id ||
-                     generateResponse.data?.id ||
-                     generateResponse.uuid ||
-                     generateResponse.generateUuid; // 保留作为备用
+      // 检查API响应是否有错误
+      console.log('LiblibAI - 文生图响应完整结构:', JSON.stringify(generateResponse, null, 2));
 
-      console.log('LiblibAI - Kontext尝试提取的任务ID:', {
+      // 检查Kontext API错误格式
+      if (generateResponse.code && generateResponse.code !== 100000) {
+        // Kontext API返回非成功代码
+        const errorMsg = generateResponse.msg || generateResponse.message || '未知错误';
+        console.error('LiblibAI - Kontext API错误:', generateResponse);
+        throw new Error(`Kontext API错误: ${errorMsg} (错误代码: ${generateResponse.code})`);
+      }
+
+      // 检查StarFlow API错误格式
+      if (generateResponse.code === 0 && generateResponse.data === null && generateResponse.msg) {
+        console.error('LiblibAI - StarFlow API错误:', generateResponse);
+        throw new Error(`StarFlow API错误: ${generateResponse.msg}`);
+      }
+
+      // 尝试从不同的响应格式中提取taskId
+      // Kontext API: {data: {task_id: "xxx"}} 或 {task_id: "xxx"}
+      // StarFlow API: {data: {generateUuid: "xxx"}}
+      const taskId = generateResponse.data?.task_id ||     // Kontext API
+                     generateResponse.task_id ||           // Kontext API备用
+                     generateResponse.id ||                 // 通用ID字段
+                     generateResponse.data?.generateUuid || // StarFlow API
+                     generateResponse.generateUuid ||       // StarFlow API备用
+                     generateResponse.uuid ||               // 通用UUID字段
+                     generateResponse.taskId;               // 驼峰格式
+
+      console.log('LiblibAI - 尝试提取的任务ID:', {
+        'data.task_id': generateResponse.data?.task_id,
         'task_id': generateResponse.task_id,
         'id': generateResponse.id,
-        'taskId': generateResponse.taskId,
-        'data.task_id': generateResponse.data?.task_id,
-        'data.id': generateResponse.data?.id,
-        'uuid': generateResponse.uuid,
+        'data.generateUuid': generateResponse.data?.generateUuid,
         'generateUuid': generateResponse.generateUuid,
+        'uuid': generateResponse.uuid,
+        'taskId': generateResponse.taskId,
         'finalTaskId': taskId
       });
 
       if (!taskId) {
         console.error('LiblibAI - 无法提取任务ID，完整响应:', generateResponse);
-        throw new Error('未获取到生成任务ID');
+        
+        // 提供更详细的错误信息
+        if (generateResponse.error) {
+          throw new Error(`API错误: ${generateResponse.error}`);
+        }
+        if (generateResponse.msg && generateResponse.msg !== 'success') {
+          throw new Error(`API响应消息: ${generateResponse.msg}`);
+        }
+        
+        throw new Error('未获取到生成任务ID，请检查API配置和模型ID是否正确');
       }
 
       // 2. 等待生成完成

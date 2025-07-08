@@ -30,22 +30,35 @@ app.use(cors({
 }));
 app.use(express.json());
 
+// LiblibAI 双API支持配置
 const LIBLIB_CONFIG = {
-  baseUrl: 'https://openapi.liblibai.cloud',
-  text2imgEndpoint: '/api/generate/webui/text2img/ultra',
-  img2imgEndpoint: '/api/generate/webui/img2img/ultra',
-  statusEndpoint: '/api/generate/status',
-  accessKey: process.env.VITE_LIBLIB_ACCESS_KEY,
-  secretKey: process.env.VITE_LIBLIB_SECRET_KEY,
-  text2imgTemplateUuid: process.env.VITE_LIBLIB_TEMPLATE_UUID || 'fe9928fde1b4491c9b360dd24aa2b115',
-  img2imgTemplateUuid: process.env.VITE_LIBLIB_IMG2IMG_TEMPLATE_UUID || '1c0a9712b3d84e1b8a9f49514a46d88c'
+  // StarFlow API 配置（旧版）
+  starflow: {
+    baseUrl: 'https://openapi.liblibai.cloud',
+    text2imgEndpoint: '/api/generate/webui/text2img/ultra',
+    img2imgEndpoint: '/api/generate/webui/img2img/ultra',
+    statusEndpoint: '/api/generate/status',
+    accessKey: process.env.VITE_LIBLIB_ACCESS_KEY,
+    secretKey: process.env.VITE_LIBLIB_SECRET_KEY,
+    text2imgTemplateUuid: process.env.VITE_LIBLIB_TEMPLATE_UUID || 'fe9928fde1b4491c9b360dd24aa2b115',
+    img2imgTemplateUuid: process.env.VITE_LIBLIB_IMG2IMG_TEMPLATE_UUID || '1c0a9712b3d84e1b8a9f49514a46d88c'
+  },
+  // Kontext API 配置（新版）
+  kontext: {
+    baseUrl: 'https://api.liblib.art',
+    workflowEndpoint: '/v1/workflows/run',
+    taskEndpoint: '/v1/tasks',
+    apiKey: process.env.VITE_LIBLIB_API_KEY, // Bearer token for Kontext API
+    modelId: process.env.VITE_LIBLIB_MODEL_ID || 'YOUR_KONTEXT_MODEL_ID'
+  }
 };
 
-function generateSignature(uri) {
+// StarFlow API 签名生成（仅用于StarFlow API）
+function generateStarflowSignature(uri) {
   const timestamp = Date.now();
   const signatureNonce = randomString(16);
   const str = `${uri}&${timestamp}&${signatureNonce}`;
-  const hash = hmacsha1(LIBLIB_CONFIG.secretKey, str);
+  const hash = hmacsha1(LIBLIB_CONFIG.starflow.secretKey, str);
   const signature = hash.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
   return { signature, timestamp: timestamp.toString(), signatureNonce };
 }
@@ -56,22 +69,28 @@ function generateSignature(uri) {
 app.get('/api', (req, res) => {
   res.json({
     message: 'Picture Book Creator API服务器运行正常',
-    version: '1.0.0',
+    version: '2.0.0',
     services: {
       openai: '双账户OpenAI聊天和图像生成',
       qwen: '通义千问聊天API',
-      liblib: 'LiblibAI StarFlow图像生成'
+      liblib: 'LiblibAI双API支持：Kontext API + StarFlow API（自动切换）'
     },
     endpoints: [
-      'GET /api/liblib/config - LiblibAI配置检查',
-      'POST /api/liblib/text2img - StarFlow文生图',
-      'POST /api/liblib/img2img - StarFlow图生图',
-      'POST /api/liblib/query/:taskId - StarFlow查询结果',
+      'GET /api/liblib/config - LiblibAI双API配置检查',
+      'POST /api/liblib/text2img - 文生图（Kontext优先，StarFlow回退）',
+      'POST /api/liblib/img2img - 图生图（Kontext优先，StarFlow回退）',
+      'POST /api/liblib/query/:taskId - 查询结果（Kontext优先，StarFlow回退）',
+      'GET /api/liblib/test-signature - StarFlow签名测试',
       'POST /api/openai/chat - OpenAI聊天',
       'POST /api/openai/images - DALL-E图像生成',
       'POST /api/qwen/chat - 通义千问聊天',
       'GET /api/status - 服务状态检查'
-    ]
+    ],
+    apiSwitching: {
+      priority: 'Kontext API',
+      fallback: 'StarFlow API',
+      description: '系统优先使用Kontext API，如未配置则自动回退到StarFlow API'
+    }
   });
 });
 
@@ -81,13 +100,13 @@ app.get('/api/liblib/test-signature', (req, res) => {
     const testTimestamp = 1640995200000;
     const testNonce = 'abcd123456789012';
     const testContent = `${testUri}&${testTimestamp}&${testNonce}`;
-    const hash = hmacsha1(LIBLIB_CONFIG.secretKey, testContent);
+    const hash = hmacsha1(LIBLIB_CONFIG.starflow.secretKey, testContent);
     const signature = hash.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
     res.json({
-      accessKey: LIBLIB_CONFIG.accessKey,
-      secretKey: LIBLIB_CONFIG.secretKey,
-      accessKeyExists: !!LIBLIB_CONFIG.accessKey,
-      secretKeyExists: !!LIBLIB_CONFIG.secretKey,
+      accessKey: LIBLIB_CONFIG.starflow.accessKey,
+      secretKey: LIBLIB_CONFIG.starflow.secretKey,
+      accessKeyExists: !!LIBLIB_CONFIG.starflow.accessKey,
+      secretKeyExists: !!LIBLIB_CONFIG.starflow.secretKey,
       uri: testUri,
       timestamp: testTimestamp,
       nonce: testNonce,
@@ -101,38 +120,143 @@ app.get('/api/liblib/test-signature', (req, res) => {
 });
 
 app.get('/api/liblib/config', (req, res) => {
-  const isConfigured = !!(LIBLIB_CONFIG.accessKey && LIBLIB_CONFIG.secretKey);
+  const starflowConfigured = !!(LIBLIB_CONFIG.starflow.accessKey && LIBLIB_CONFIG.starflow.secretKey);
+  const kontextConfigured = !!LIBLIB_CONFIG.kontext.apiKey;
+  
   res.json({
-    configured: isConfigured,
-    apiSystem: 'StarFlow API',
-    baseUrl: LIBLIB_CONFIG.baseUrl,
-    endpoints: {
-      text2img: LIBLIB_CONFIG.text2imgEndpoint,
-      img2img: LIBLIB_CONFIG.img2imgEndpoint,
-      status: LIBLIB_CONFIG.statusEndpoint
+    starflow: {
+      configured: starflowConfigured,
+      apiSystem: 'StarFlow API',
+      baseUrl: LIBLIB_CONFIG.starflow.baseUrl,
+      endpoints: {
+        text2img: LIBLIB_CONFIG.starflow.text2imgEndpoint,
+        img2img: LIBLIB_CONFIG.starflow.img2imgEndpoint,
+        status: LIBLIB_CONFIG.starflow.statusEndpoint
+      },
+      hasAccessKey: !!LIBLIB_CONFIG.starflow.accessKey,
+      hasSecretKey: !!LIBLIB_CONFIG.starflow.secretKey,
+      hasText2imgTemplateUuid: !!LIBLIB_CONFIG.starflow.text2imgTemplateUuid,
+      hasImg2imgTemplateUuid: !!LIBLIB_CONFIG.starflow.img2imgTemplateUuid,
+      message: starflowConfigured ? 'LiblibAI StarFlow API配置正常' : 'StarFlow API密钥未配置'
     },
-    hasAccessKey: !!LIBLIB_CONFIG.accessKey,
-    hasSecretKey: !!LIBLIB_CONFIG.secretKey,
-    hasText2imgTemplateUuid: !!LIBLIB_CONFIG.text2imgTemplateUuid,
-    hasImg2imgTemplateUuid: !!LIBLIB_CONFIG.img2imgTemplateUuid,
-    message: isConfigured ? 'LiblibAI StarFlow API配置正常' : 'LiblibAI API密钥未配置，请检查VITE_LIBLIB_ACCESS_KEY和VITE_LIBLIB_SECRET_KEY环境变量'
+    kontext: {
+      configured: kontextConfigured,
+      apiSystem: 'Kontext API',
+      baseUrl: LIBLIB_CONFIG.kontext.baseUrl,
+      endpoints: {
+        workflow: LIBLIB_CONFIG.kontext.workflowEndpoint,
+        task: LIBLIB_CONFIG.kontext.taskEndpoint
+      },
+      hasApiKey: !!LIBLIB_CONFIG.kontext.apiKey,
+      hasModelId: !!LIBLIB_CONFIG.kontext.modelId,
+      message: kontextConfigured ? 'LiblibAI Kontext API配置正常' : 'Kontext API密钥未配置，请检查VITE_LIBLIB_API_KEY环境变量'
+    },
+    recommendation: kontextConfigured ? 'recommend_kontext' : starflowConfigured ? 'fallback_starflow' : 'need_config'
   });
 });
 
+// Kontext API - 文生图
 app.post('/api/liblib/text2img', async (req, res) => {
   try {
     const { prompt, options = {} } = req.body;
     if (!prompt) return res.status(400).json({ error: '缺少prompt参数' });
-    if (!LIBLIB_CONFIG.accessKey || !LIBLIB_CONFIG.secretKey)
-      return res.status(500).json({ error: 'LiblibAI API配置不完整' });
     
-    const uri = LIBLIB_CONFIG.text2imgEndpoint;
-    const { signature, timestamp, signatureNonce } = generateSignature(uri);
-    const url = `${LIBLIB_CONFIG.baseUrl}${uri}?AccessKey=${LIBLIB_CONFIG.accessKey}&Signature=${signature}&Timestamp=${timestamp}&SignatureNonce=${signatureNonce}`;
-    
-    // StarFlow API正确的请求格式
+    // 优先使用Kontext API，如果未配置则回退到StarFlow
+    if (LIBLIB_CONFIG.kontext.apiKey) {
+      console.log('LiblibAI - 使用Kontext API进行文生图');
+      return await handleKontextText2img(req, res, prompt, options);
+    } else if (LIBLIB_CONFIG.starflow.accessKey && LIBLIB_CONFIG.starflow.secretKey) {
+      console.log('LiblibAI - 回退到StarFlow API进行文生图');
+      return await handleStarflowText2img(req, res, prompt, options);
+    } else {
+      return res.status(500).json({ error: 'LiblibAI API配置不完整：需要配置Kontext API密钥或StarFlow API密钥' });
+    }
+  } catch (error) {
+    console.error('LiblibAI API请求异常:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Kontext API 文生图处理函数
+async function handleKontextText2img(req, res, prompt, options) {
+  try {
+    const url = `${LIBLIB_CONFIG.kontext.baseUrl}${LIBLIB_CONFIG.kontext.workflowEndpoint}`;
+    const headers = {
+      'Authorization': `Bearer ${LIBLIB_CONFIG.kontext.apiKey}`,
+      'Content-Type': 'application/json'
+    };
+
+    // 根据LiblibAI Kontext API文档构建请求体
     const requestData = {
-      templateUuid: LIBLIB_CONFIG.text2imgTemplateUuid,
+      prompt: prompt.substring(0, 2000),
+      negative_prompt: options.negative_prompt || 'blurry, low quality, distorted, inappropriate, nsfw',
+      model_id: LIBLIB_CONFIG.kontext.modelId,
+      width: options.width || 768,
+      height: options.height || 768,
+      steps: options.steps || 25,
+      sampler: options.sampler || 'DPM++ SDE Karras', // 使用文档推荐的sampler
+      cfg_scale: options.cfg_scale || 8,
+      n_iter: options.n_iter || 1,
+      seed: options.seed || -1
+    };
+
+    // 添加可选的高级参数
+    if (options.additionalNetwork) {
+      requestData.additionalNetwork = options.additionalNetwork;
+    }
+    if (options.hiResFixInfo) {
+      requestData.hiResFixInfo = options.hiResFixInfo;
+    }
+
+    console.log('LiblibAI Kontext API - 文生图请求:', {
+      url: url,
+      modelId: requestData.model_id,
+      prompt: requestData.prompt.substring(0, 100) + '...',
+      sampler: requestData.sampler
+    });
+
+    const fetch = (await import('node-fetch')).default;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: headers,
+      body: JSON.stringify(requestData)
+    });
+
+    const responseText = await response.text();
+    let result;
+    try {
+      result = JSON.parse(responseText);
+    } catch (parseError) {
+      console.error('LiblibAI Kontext API响应解析失败:', responseText.substring(0, 500));
+      return res.status(500).json({
+        error: 'Kontext API响应格式错误',
+        details: responseText.substring(0, 500),
+        status: response.status
+      });
+    }
+
+    if (!response.ok) {
+      console.error('LiblibAI Kontext API请求失败:', response.status, result);
+      return res.status(response.status).json(result);
+    }
+
+    console.log('LiblibAI Kontext API - 文生图请求成功:', result);
+    res.json(result);
+  } catch (error) {
+    console.error('LiblibAI Kontext API请求异常:', error);
+    throw error;
+  }
+}
+
+// StarFlow API 文生图处理函数（保持原有逻辑）
+async function handleStarflowText2img(req, res, prompt, options) {
+  try {
+    const uri = LIBLIB_CONFIG.starflow.text2imgEndpoint;
+    const { signature, timestamp, signatureNonce } = generateStarflowSignature(uri);
+    const url = `${LIBLIB_CONFIG.starflow.baseUrl}${uri}?AccessKey=${LIBLIB_CONFIG.starflow.accessKey}&Signature=${signature}&Timestamp=${timestamp}&SignatureNonce=${signatureNonce}`;
+    
+    const requestData = {
+      templateUuid: LIBLIB_CONFIG.starflow.text2imgTemplateUuid,
       generateParams: {
         prompt: prompt.substring(0, 2000),
         width: options.width || 768,
@@ -146,9 +270,9 @@ app.post('/api/liblib/text2img', async (req, res) => {
     };
     
     console.log('StarFlow API - 文生图请求:', {
-      url: `${LIBLIB_CONFIG.baseUrl}${uri}`,
+      url: `${LIBLIB_CONFIG.starflow.baseUrl}${uri}`,
       templateUuid: requestData.templateUuid,
-      prompt: requestData.generateParams.prompt
+      prompt: requestData.generateParams.prompt.substring(0, 100) + '...'
     });
     
     const fetch = (await import('node-fetch')).default;
@@ -165,7 +289,7 @@ app.post('/api/liblib/text2img', async (req, res) => {
     } catch (parseError) {
       console.error('StarFlow API响应解析失败:', responseText.substring(0, 500));
       return res.status(500).json({
-        error: 'API响应格式错误',
+        error: 'StarFlow API响应格式错误',
         details: responseText.substring(0, 500),
         status: response.status
       });
@@ -180,25 +304,114 @@ app.post('/api/liblib/text2img', async (req, res) => {
     res.json(result);
   } catch (error) {
     console.error('StarFlow API请求异常:', error);
-    res.status(500).json({ error: error.message });
+    throw error;
   }
-});
+}
 
+// Kontext API - 图生图
 app.post('/api/liblib/img2img', async (req, res) => {
   try {
     const { prompt, imageUrl, options = {} } = req.body;
     if (!prompt || !imageUrl)
       return res.status(400).json({ error: '缺少prompt或imageUrl参数' });
-    if (!LIBLIB_CONFIG.accessKey || !LIBLIB_CONFIG.secretKey)
-      return res.status(500).json({ error: 'LiblibAI API配置不完整' });
+    
+    // 优先使用Kontext API，如果未配置则回退到StarFlow
+    if (LIBLIB_CONFIG.kontext.apiKey) {
+      console.log('LiblibAI - 使用Kontext API进行图生图');
+      return await handleKontextImg2img(req, res, prompt, imageUrl, options);
+    } else if (LIBLIB_CONFIG.starflow.accessKey && LIBLIB_CONFIG.starflow.secretKey) {
+      console.log('LiblibAI - 回退到StarFlow API进行图生图');
+      return await handleStarflowImg2img(req, res, prompt, imageUrl, options);
+    } else {
+      return res.status(500).json({ error: 'LiblibAI API配置不完整：需要配置Kontext API密钥或StarFlow API密钥' });
+    }
+  } catch (error) {
+    console.error('LiblibAI API图生图请求异常:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
 
-    const uri = LIBLIB_CONFIG.img2imgEndpoint;
-    const { signature, timestamp, signatureNonce } = generateSignature(uri);
-    const url = `${LIBLIB_CONFIG.baseUrl}${uri}?AccessKey=${LIBLIB_CONFIG.accessKey}&Signature=${signature}&Timestamp=${timestamp}&SignatureNonce=${signatureNonce}`;
+// Kontext API 图生图处理函数
+async function handleKontextImg2img(req, res, prompt, imageUrl, options) {
+  try {
+    const url = `${LIBLIB_CONFIG.kontext.baseUrl}${LIBLIB_CONFIG.kontext.workflowEndpoint}`;
+    const headers = {
+      'Authorization': `Bearer ${LIBLIB_CONFIG.kontext.apiKey}`,
+      'Content-Type': 'application/json'
+    };
 
-    // StarFlow API正确的图生图参数结构
+    // 根据LiblibAI Kontext API文档构建图生图请求体
     const requestData = {
-      templateUuid: LIBLIB_CONFIG.img2imgTemplateUuid,
+      image: imageUrl, // Kontext API使用image字段
+      prompt: prompt.substring(0, 2000),
+      negative_prompt: options.negative_prompt || 'blurry, low quality, distorted, inappropriate, nsfw',
+      model_id: LIBLIB_CONFIG.kontext.modelId,
+      strength: options.strength || 0.7, // Kontext API使用strength字段
+      steps: options.steps || 25,
+      sampler: options.sampler || 'DPM++ SDE Karras',
+      cfg_scale: options.cfg_scale || 7,
+      n_iter: options.n_iter || 1,
+      seed: options.seed || -1
+    };
+
+    // 添加可选参数
+    if (options.mask) {
+      requestData.mask = options.mask; // 蒙版图像
+    }
+    if (options.controlnet) {
+      requestData.controlnet = options.controlnet; // ControlNet参数
+    }
+
+    console.log('LiblibAI Kontext API - 图生图请求:', {
+      url: url,
+      modelId: requestData.model_id,
+      prompt: requestData.prompt.substring(0, 100) + '...',
+      strength: requestData.strength,
+      sampler: requestData.sampler
+    });
+
+    const fetch = (await import('node-fetch')).default;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: headers,
+      body: JSON.stringify(requestData)
+    });
+
+    const responseText = await response.text();
+    let result;
+    try {
+      result = JSON.parse(responseText);
+    } catch (parseError) {
+      console.error('LiblibAI Kontext API图生图响应解析失败:', responseText.substring(0, 500));
+      return res.status(500).json({
+        error: 'Kontext API图生图响应格式错误',
+        details: responseText.substring(0, 500),
+        status: response.status
+      });
+    }
+
+    if (!response.ok) {
+      console.error('LiblibAI Kontext API图生图请求失败:', response.status, result);
+      return res.status(response.status).json(result);
+    }
+
+    console.log('LiblibAI Kontext API - 图生图请求成功:', result);
+    res.json(result);
+  } catch (error) {
+    console.error('LiblibAI Kontext API图生图请求异常:', error);
+    throw error;
+  }
+}
+
+// StarFlow API 图生图处理函数（保持原有逻辑）
+async function handleStarflowImg2img(req, res, prompt, imageUrl, options) {
+  try {
+    const uri = LIBLIB_CONFIG.starflow.img2imgEndpoint;
+    const { signature, timestamp, signatureNonce } = generateStarflowSignature(uri);
+    const url = `${LIBLIB_CONFIG.starflow.baseUrl}${uri}?AccessKey=${LIBLIB_CONFIG.starflow.accessKey}&Signature=${signature}&Timestamp=${timestamp}&SignatureNonce=${signatureNonce}`;
+
+    const requestData = {
+      templateUuid: LIBLIB_CONFIG.starflow.img2imgTemplateUuid,
       generateParams: {
         prompt: prompt.substring(0, 2000),
         init_image: imageUrl, // StarFlow API使用init_image字段
@@ -214,9 +427,9 @@ app.post('/api/liblib/img2img', async (req, res) => {
     };
 
     console.log('StarFlow API - 图生图请求:', {
-      url: `${LIBLIB_CONFIG.baseUrl}${uri}`,
+      url: `${LIBLIB_CONFIG.starflow.baseUrl}${uri}`,
       templateUuid: requestData.templateUuid,
-      prompt: requestData.generateParams.prompt,
+      prompt: requestData.generateParams.prompt.substring(0, 100) + '...',
       denoising_strength: requestData.generateParams.denoising_strength
     });
 
@@ -234,7 +447,7 @@ app.post('/api/liblib/img2img', async (req, res) => {
     } catch (parseError) {
       console.error('StarFlow API图生图响应解析失败:', responseText.substring(0, 500));
       return res.status(500).json({
-        error: 'API响应格式错误',
+        error: 'StarFlow API图生图响应格式错误',
         details: responseText.substring(0, 500),
         status: response.status
       });
@@ -249,29 +462,90 @@ app.post('/api/liblib/img2img', async (req, res) => {
     res.json(result);
   } catch (error) {
     console.error('StarFlow API图生图请求异常:', error);
-    res.status(500).json({ error: error.message });
+    throw error;
   }
-});
+}
 
+// Kontext API - 查询任务状态
 app.post('/api/liblib/query/:taskId', async (req, res) => {
   try {
     const { taskId } = req.params;
     if (!taskId) return res.status(400).json({ error: '缺少taskId参数' });
-    if (!LIBLIB_CONFIG.accessKey || !LIBLIB_CONFIG.secretKey)
-      return res.status(500).json({ error: 'LiblibAI API配置不完整' });
+    
+    // 优先使用Kontext API，如果未配置则回退到StarFlow
+    if (LIBLIB_CONFIG.kontext.apiKey) {
+      console.log('LiblibAI - 使用Kontext API查询任务状态');
+      return await handleKontextQuery(req, res, taskId);
+    } else if (LIBLIB_CONFIG.starflow.accessKey && LIBLIB_CONFIG.starflow.secretKey) {
+      console.log('LiblibAI - 回退到StarFlow API查询任务状态');
+      return await handleStarflowQuery(req, res, taskId);
+    } else {
+      return res.status(500).json({ error: 'LiblibAI API配置不完整：需要配置Kontext API密钥或StarFlow API密钥' });
+    }
+  } catch (error) {
+    console.error('LiblibAI API查询请求异常:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
 
-    // StarFlow API查询接口格式：POST /api/generate/status
-    const uri = LIBLIB_CONFIG.statusEndpoint;
-    const { signature, timestamp, signatureNonce } = generateSignature(uri);
-    const url = `${LIBLIB_CONFIG.baseUrl}${uri}?AccessKey=${LIBLIB_CONFIG.accessKey}&Signature=${signature}&Timestamp=${timestamp}&SignatureNonce=${signatureNonce}`;
+// Kontext API 查询处理函数
+async function handleKontextQuery(req, res, taskId) {
+  try {
+    const url = `${LIBLIB_CONFIG.kontext.baseUrl}${LIBLIB_CONFIG.kontext.taskEndpoint}/${taskId}`;
+    const headers = {
+      'Authorization': `Bearer ${LIBLIB_CONFIG.kontext.apiKey}`
+    };
 
-    // StarFlow API查询请求体格式
+    console.log('LiblibAI Kontext API - 查询任务状态:', { 
+      url: url, 
+      taskId: taskId 
+    });
+
+    const fetch = (await import('node-fetch')).default;
+    const response = await fetch(url, {
+      method: 'GET', // Kontext API使用GET方法查询
+      headers: headers
+    });
+
+    const responseText = await response.text();
+    let result;
+    try {
+      result = JSON.parse(responseText);
+    } catch (parseError) {
+      console.error('LiblibAI Kontext API查询响应解析失败:', responseText.substring(0, 500));
+      return res.status(500).json({
+        error: 'Kontext API查询响应格式错误',
+        details: responseText.substring(0, 500),
+        status: response.status
+      });
+    }
+
+    if (!response.ok) {
+      console.error('LiblibAI Kontext API查询请求失败:', response.status, result);
+      return res.status(response.status).json(result);
+    }
+
+    console.log('LiblibAI Kontext API - 查询任务成功:', result);
+    res.json(result);
+  } catch (error) {
+    console.error('LiblibAI Kontext API查询请求异常:', error);
+    throw error;
+  }
+}
+
+// StarFlow API 查询处理函数（保持原有逻辑）
+async function handleStarflowQuery(req, res, taskId) {
+  try {
+    const uri = LIBLIB_CONFIG.starflow.statusEndpoint;
+    const { signature, timestamp, signatureNonce } = generateStarflowSignature(uri);
+    const url = `${LIBLIB_CONFIG.starflow.baseUrl}${uri}?AccessKey=${LIBLIB_CONFIG.starflow.accessKey}&Signature=${signature}&Timestamp=${timestamp}&SignatureNonce=${signatureNonce}`;
+
     const requestData = {
       generateUuid: taskId
     };
 
     console.log('StarFlow API - 查询任务状态:', { 
-      url: `${LIBLIB_CONFIG.baseUrl}${uri}`, 
+      url: `${LIBLIB_CONFIG.starflow.baseUrl}${uri}`, 
       generateUuid: taskId 
     });
 
@@ -289,7 +563,7 @@ app.post('/api/liblib/query/:taskId', async (req, res) => {
     } catch (parseError) {
       console.error('StarFlow API查询响应解析失败:', responseText.substring(0, 500));
       return res.status(500).json({
-        error: '查询响应格式错误',
+        error: 'StarFlow API查询响应格式错误',
         details: responseText.substring(0, 500),
         status: response.status
       });
@@ -304,9 +578,9 @@ app.post('/api/liblib/query/:taskId', async (req, res) => {
     res.json(result);
   } catch (error) {
     console.error('StarFlow API查询请求异常:', error);
-    res.status(500).json({ error: error.message });
+    throw error;
   }
-});
+}
 
 // 🔗 双账户OpenAI聊天API代理
 app.post('/api/openai/chat', async (req, res) => {
