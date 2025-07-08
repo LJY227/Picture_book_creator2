@@ -4,6 +4,7 @@ import HomePage from './components/HomePage.jsx'
 import CharacterSetupPage from './components/CharacterSetupPage.jsx'
 import StorySetupPage from './components/StorySetupPage.jsx'
 import ContentSetupPage from './components/ContentSetupPage.jsx'
+import CustomStoryEditPage from './components/CustomStoryEditPage.jsx'
 import PreviewPage from './components/PreviewPage.jsx'
 import DebugPage from './components/DebugPage.jsx'
 import ImageTestPage from './components/ImageTestPage.jsx'
@@ -21,8 +22,10 @@ function App() {
             <Route path="/character-setup" element={<CharacterSetupPage />} />
             <Route path="/story-setup" element={<StorySetupPage />} />
             <Route path="/content-setup" element={<ContentSetupPage />} />
+            <Route path="/custom-story-edit" element={<CustomStoryEditPage />} />
             <Route path="/preview" element={<PreviewPage />} />
             <Route path="/debug" element={<DebugPage />} />
+            <Route path="/test-custom" element={<CustomStoryEditPage />} />
             <Route path="/image-test" element={<ImageTestPage />} />
 
             <Route path="/liblib-test" element={<LiblibTestPage />} />

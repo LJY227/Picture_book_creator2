@@ -17,7 +17,8 @@ export default function ContentSetupPage() {
     customContent: '',
     selectedTopic: '', // 新增：选中的主题示例
     imageEngine: 'liblibai', // 默认使用LiblibAI
-    useCharacterConsistency: true // 默认启用角色一致性（在代码中强制启用，不显示给用户）
+    useCharacterConsistency: true, // 默认启用角色一致性（在代码中强制启用，不显示给用户）
+    creationMode: '' // 新增：创作模式选择 ('ai' 或 'custom')
   })
   const [isGenerating, setIsGenerating] = useState(false)
   const [generationStatus, setGenerationStatus] = useState('')
@@ -192,6 +193,43 @@ export default function ContentSetupPage() {
 
   const handleBack = () => {
     navigate('/story-setup')
+  }
+
+  // 处理下一步按钮点击
+  const handleNext = () => {
+    // 如果有教学内容（自定义或选择的主题），但没有选择创作模式，默认为AI生成
+    let finalCreationMode = contentData.creationMode
+    if (!finalCreationMode && (contentData.isCustom || contentData.selectedTopic)) {
+      finalCreationMode = 'ai' // 默认为AI生成模式，确保向后兼容
+    }
+
+    // 保存内容数据
+    const finalContentData = {
+      ...contentData,
+      creationMode: finalCreationMode,
+      finalTopic: contentData.isCustom ? contentData.customContent : contentData.selectedTopic
+    }
+    
+    // 调试信息
+    console.log('🔍 ContentSetupPage - 保存数据前检查:')
+    console.log('Character data:', localStorage.getItem('characterData'))
+    console.log('Story data:', localStorage.getItem('storyData'))
+    console.log('Final content data:', finalContentData)
+    console.log('Creation mode:', finalCreationMode)
+    
+    localStorage.setItem('contentData', JSON.stringify(finalContentData))
+    
+    console.log('✅ 数据已保存到localStorage')
+
+    // 根据创作模式跳转
+    if (finalCreationMode === 'custom') {
+      console.log('🚀 跳转到自定义编辑页面')
+      navigate('/custom-story-edit')
+    } else {
+      // 默认或明确选择AI生成模式
+      console.log('🤖 启动AI生成流程')
+      handleGenerate()
+    }
   }
 
   // 获取当前选择状态的描述
@@ -471,6 +509,135 @@ export default function ContentSetupPage() {
               </div>
             </div>
           )}
+
+          {/* 创作模式选择 */}
+          {(contentData.isCustom || contentData.selectedTopic) && (
+            <div className="space-y-4 animate-in slide-in-from-top-2 duration-300">
+              <div className="bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-xl p-6">
+                <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                  <Sparkles className="w-5 h-5 mr-2 text-blue-500" />
+                  选择创作模式
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* AI智能生成模式 */}
+                  <div 
+                    className={`p-4 rounded-xl border-2 cursor-pointer transition-all duration-300 ${
+                      contentData.creationMode === 'ai'
+                        ? 'border-blue-500 bg-blue-50 shadow-lg transform scale-105'
+                        : 'border-gray-200 bg-white hover:border-blue-300 hover:shadow-md'
+                    }`}
+                    onClick={() => setContentData(prev => ({ ...prev, creationMode: 'ai' }))}
+                  >
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center">
+                        <div className={`p-2 rounded-lg ${
+                          contentData.creationMode === 'ai' ? 'bg-blue-100' : 'bg-gray-100'
+                        }`}>
+                          <Sparkles className={`w-5 h-5 ${
+                            contentData.creationMode === 'ai' ? 'text-blue-600' : 'text-gray-600'
+                          }`} />
+                        </div>
+                        <h4 className={`ml-3 font-medium ${
+                          contentData.creationMode === 'ai' ? 'text-blue-900' : 'text-gray-800'
+                        }`}>
+                          AI智能生成
+                        </h4>
+                      </div>
+                      <div className={`w-4 h-4 rounded-full border-2 ${
+                        contentData.creationMode === 'ai'
+                          ? 'bg-blue-500 border-blue-500'
+                          : 'border-gray-300'
+                      }`}>
+                        {contentData.creationMode === 'ai' && (
+                          <div className="w-2 h-2 bg-white rounded-full m-0.5"></div>
+                        )}
+                      </div>
+                    </div>
+                    <p className={`text-sm leading-relaxed ${
+                      contentData.creationMode === 'ai' ? 'text-blue-700' : 'text-gray-600'
+                    }`}>
+                      让AI根据您的设置自动创作完整的绘本故事和插画，快速生成专业内容
+                    </p>
+                    <div className="mt-3 flex items-center text-xs text-gray-500">
+                      <span className="flex items-center mr-4">
+                        <CheckCircle className="w-3 h-3 mr-1" />
+                        全自动生成
+                      </span>
+                      <span className="flex items-center">
+                        <CheckCircle className="w-3 h-3 mr-1" />
+                        快速完成
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* 自定义编辑模式 */}
+                  <div 
+                    className={`p-4 rounded-xl border-2 cursor-pointer transition-all duration-300 ${
+                      contentData.creationMode === 'custom'
+                        ? 'border-purple-500 bg-purple-50 shadow-lg transform scale-105'
+                        : 'border-gray-200 bg-white hover:border-purple-300 hover:shadow-md'
+                    }`}
+                    onClick={() => setContentData(prev => ({ ...prev, creationMode: 'custom' }))}
+                  >
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center">
+                        <div className={`p-2 rounded-lg ${
+                          contentData.creationMode === 'custom' ? 'bg-purple-100' : 'bg-gray-100'
+                        }`}>
+                          <Edit3 className={`w-5 h-5 ${
+                            contentData.creationMode === 'custom' ? 'text-purple-600' : 'text-gray-600'
+                          }`} />
+                        </div>
+                        <h4 className={`ml-3 font-medium ${
+                          contentData.creationMode === 'custom' ? 'text-purple-900' : 'text-gray-800'
+                        }`}>
+                          自定义编辑
+                        </h4>
+                      </div>
+                      <div className={`w-4 h-4 rounded-full border-2 ${
+                        contentData.creationMode === 'custom'
+                          ? 'bg-purple-500 border-purple-500'
+                          : 'border-gray-300'
+                      }`}>
+                        {contentData.creationMode === 'custom' && (
+                          <div className="w-2 h-2 bg-white rounded-full m-0.5"></div>
+                        )}
+                      </div>
+                    </div>
+                    <p className={`text-sm leading-relaxed ${
+                      contentData.creationMode === 'custom' ? 'text-purple-700' : 'text-gray-600'
+                    }`}>
+                      手动编辑每一页的故事内容，配合AI插画生成，创造独特的个性化绘本
+                    </p>
+                    <div className="mt-3 flex items-center text-xs text-gray-500">
+                      <span className="flex items-center mr-4">
+                        <CheckCircle className="w-3 h-3 mr-1" />
+                        完全自主
+                      </span>
+                      <span className="flex items-center">
+                        <CheckCircle className="w-3 h-3 mr-1" />
+                        个性化强
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                
+                {contentData.creationMode && (
+                  <div className="mt-4 p-3 bg-white rounded-lg border border-gray-200">
+                    <div className="flex items-center text-sm text-gray-600">
+                      <div className={`w-2 h-2 rounded-full mr-2 ${
+                        contentData.creationMode === 'ai' ? 'bg-blue-500' : 'bg-purple-500'
+                      }`}></div>
+                      <span>已选择：</span>
+                      <span className="font-medium ml-1">
+                        {contentData.creationMode === 'ai' ? 'AI智能生成模式' : '自定义编辑模式'}
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -486,11 +653,15 @@ export default function ContentSetupPage() {
             {t('content.back')}
           </Button>
           <Button
-            onClick={handleGenerate}
+            onClick={handleNext}
             className="w-full sm:w-auto bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white px-6 sm:px-8 py-3 rounded-xl font-medium shadow-lg hover:shadow-xl transition-all duration-300 order-1 sm:order-2"
           >
-            <Sparkles className="w-4 h-4 mr-2" />
-            {t('content.next')}
+            {contentData.creationMode === 'custom' ? (
+              <Edit3 className="w-4 h-4 mr-2" />
+            ) : (
+              <Sparkles className="w-4 h-4 mr-2" />
+            )}
+            {contentData.creationMode === 'custom' ? '开始创作' : (contentData.isCustom || contentData.selectedTopic) ? (contentData.creationMode ? '智能生成' : '继续') : '智能生成'}
           </Button>
         </div>
       </div>
