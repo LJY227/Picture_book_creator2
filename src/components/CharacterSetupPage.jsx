@@ -113,7 +113,7 @@ export default function CharacterSetupPage() {
 4. 风格要生动有趣，富有想象力
 5. 不要包含场景描述（如背景、环境等），统一使用白底
 6. 不要包含艺术风格描述（如水彩、卡通等），这将单独处理
-7. 直接返回关键词描述，不需要分类标题
+7. 直接返回中文关键词描述，不需要分类标题
 
 示例格式：一个/一只...的${customIdentity}，拥有...特征，穿着...，表情...，充满...氛围。
 
@@ -126,19 +126,78 @@ export default function CharacterSetupPage() {
 
       console.log('通义千问返回结果:', result)
 
-      if (result?.content) {
+      // 修复：正确解析OpenAI格式的响应 - 添加详细的调试日志
+      let generatedContent = null
+      
+      console.log('🔍 开始解析响应内容...')
+      console.log('🔍 result.choices 存在吗?', !!result?.choices)
+      console.log('🔍 result.choices 长度:', result?.choices?.length)
+      
+      if (result?.choices && result.choices.length > 0) {
+        console.log('🔍 第一个choice:', result.choices[0])
+        console.log('🔍 message 存在吗?', !!result.choices[0]?.message)
+        console.log('🔍 message:', result.choices[0]?.message)
+        
+        if (result.choices[0]?.message?.content) {
+          const rawContent = result.choices[0].message.content
+          console.log('🔍 原始内容:', JSON.stringify(rawContent))
+          console.log('🔍 原始内容类型:', typeof rawContent)
+          console.log('🔍 原始内容长度:', rawContent.length)
+          
+          // 处理可能的格式问题
+          generatedContent = rawContent
+            .replace(/[\r\n\t]/g, ' ')  // 替换换行符和制表符
+            .replace(/\s+/g, ' ')       // 合并多个空格
+            .trim()                     // 去除首尾空白
+          
+          console.log('🔍 处理后内容:', JSON.stringify(generatedContent))
+          console.log('🔍 处理后内容长度:', generatedContent.length)
+          
+          if (generatedContent.length > 0) {
+            console.log('✅ 成功从 choices[0].message.content 提取内容:', generatedContent)
+          } else {
+            console.log('❌ 处理后内容为空')
+            generatedContent = null
+          }
+        } else {
+          console.log('❌ choices[0].message.content 不存在或为空')
+          // 尝试其他可能的字段
+          if (result.choices[0]?.text) {
+            generatedContent = result.choices[0].text.trim()
+            console.log('✅ 从 choices[0].text 提取内容:', generatedContent)
+          } else if (result.choices[0]?.message) {
+            // 检查message对象的所有字段
+            console.log('🔍 message对象的所有字段:', Object.keys(result.choices[0].message))
+            const messageContent = result.choices[0].message.content || result.choices[0].message.text || result.choices[0].message.response
+            if (messageContent) {
+              generatedContent = messageContent.trim()
+              console.log('✅ 从message其他字段提取内容:', generatedContent)
+            }
+          }
+        }
+      } else if (result?.content) {
+        generatedContent = result.content.trim()
+        console.log('✅ 从 result.content 提取内容:', generatedContent)
+      } else {
+        console.log('❌ 无法从任何字段提取内容')
+        console.log('🔍 完整的result对象:', JSON.stringify(result, null, 2))
+      }
+
+      if (generatedContent && generatedContent.length > 0) {
         setCharacterData(prev => ({ 
           ...prev, 
-          description: result.content.trim()
+          description: generatedContent
         }))
-        console.log('已更新角色描述:', result.content.trim())
+        console.log('✅ 已更新角色描述:', generatedContent)
       } else {
-        console.error('通义千问未返回有效内容:', result)
-        alert('生成失败，请检查API配置')
+        console.error('❌ 通义千问未返回有效内容 - 内容为空或不存在')
+        console.error('🔍 调试信息 - result:', result)
+        console.error('🔍 调试信息 - generatedContent:', generatedContent)
+        alert(t('character.identity.generation.failed'))
       }
     } catch (error) {
       console.error('生成角色描述失败:', error)
-      alert('生成失败，请稍后重试')
+      alert(t('character.identity.generation.failed'))
     } finally {
       setIsGeneratingIdentity(false)
     }
@@ -147,24 +206,102 @@ export default function CharacterSetupPage() {
   // 生成角色预览
   const handleGeneratePreview = async () => {
     if (!characterData.description.trim()) {
-      alert('请先填写或生成角色描述')
+      alert(t('character.preview.no.description'))
       return
     }
 
     setIsGeneratingPreview(true)
     try {
-      // 获取当前选择的风格
-      const currentStyle = characterData.style === 'custom' ? characterData.customStyle : STYLE_OPTIONS[characterData.style]?.keywords || ''
+      // 获取当前选择的风格（确保风格是英文）
+      let currentStyle = ''
+      if (characterData.style === 'custom') {
+        currentStyle = characterData.customStyle || ''
+      } else {
+        currentStyle = STYLE_OPTIONS[characterData.style]?.keywords || ''
+      }
+      
+      console.log('🎨 选择的风格:', characterData.style)
+      console.log('🎨 风格关键词:', currentStyle)
+      
+      // 先将中文描述翻译为英文（确保图片生成使用英文关键词）
+      let englishDescription = characterData.description
+      
+      // 如果描述包含中文，则需要翻译为英文
+      if (/[\u4e00-\u9fff]/.test(characterData.description)) {
+        console.log('🔤 检测到中文描述，开始翻译...')
+        try {
+          const translatePrompt = `请将以下角色描述翻译为适合图像生成的英文关键词：
+
+${characterData.description}
+
+要求：
+1. 翻译为英文关键词描述
+2. 保持角色特征的完整性
+3. 适合儿童绘本角色
+4. 不要添加场景或风格描述
+5. 只返回英文翻译结果，不要解释
+
+英文描述：`
+
+          const translateResult = await callQwenChat({
+            messages: [{ role: 'user', content: translatePrompt }],
+            temperature: 0.3
+          }, 'TRANSLATION')
+
+          console.log('翻译结果:', translateResult)
+
+          // 正确解析翻译结果 - 添加详细调试
+          let translatedContent = null
+          
+          if (translateResult?.choices && translateResult.choices.length > 0 && translateResult.choices[0]?.message?.content) {
+            const rawContent = translateResult.choices[0].message.content
+            console.log('🔍 翻译原始内容:', JSON.stringify(rawContent))
+            
+            translatedContent = rawContent
+              .replace(/[\r\n\t]/g, ' ')  // 替换换行符和制表符
+              .replace(/\s+/g, ' ')       // 合并多个空格
+              .trim()                     // 去除首尾空白
+            
+            if (translatedContent.length > 0) {
+              englishDescription = translatedContent
+              console.log('✅ 成功翻译为英文:', englishDescription)
+            } else {
+              console.log('❌ 翻译后内容为空')
+            }
+          } else if (translateResult?.content) {
+            englishDescription = translateResult.content.trim()
+            console.log('✅ 从content字段获取翻译:', englishDescription)
+          } else {
+            console.log('❌ 翻译失败，无法提取内容')
+            console.log('🔍 翻译结果详情:', translateResult)
+          }
+
+          console.log('🔤 最终英文描述:', englishDescription)
+        } catch (translateError) {
+          console.error('翻译失败，使用原描述:', translateError)
+          // 翻译失败时使用原描述
+        }
+      } else {
+        console.log('🔤 描述已是英文，无需翻译')
+      }
       
       // 构建适合LiblibAI的英文提示词，包含风格
-      let prompt = `children's book character, ${characterData.description}, ${currentStyle}, white background, friendly, suitable for kids, high quality, detailed`
+      let prompt = `children's book character, ${englishDescription}`
+      
+      // 添加风格（确保风格是英文）
+      if (currentStyle) {
+        prompt += `, ${currentStyle}`
+      }
+      
+      // 添加其他英文关键词
+      prompt += `, white background, friendly, suitable for kids, high quality, detailed`
       
       // 如果有自定义身份，加入到提示词中
       if (characterData.customIdentity) {
         prompt = `${characterData.customIdentity} character, ${prompt}`
       }
 
-      console.log('生成预览的提示词:', prompt)
+      console.log('🖼️ 生成预览的提示词:', prompt)
 
       const result = await generateTextToImageComplete(prompt, (progress) => {
         console.log('预览生成进度:', progress)
@@ -180,11 +317,11 @@ export default function CharacterSetupPage() {
         console.log('成功设置预览图片:', imageUrl)
       } else {
         console.error('未找到有效的图片URL:', result)
-        alert('预览生成完成，但未获取到图片链接')
+        alert(t('character.preview.failed'))
       }
     } catch (error) {
       console.error('生成预览失败:', error)
-      alert('预览生成失败，请稍后重试')
+      alert(t('character.preview.failed'))
     } finally {
       setIsGeneratingPreview(false)
     }
@@ -325,7 +462,7 @@ export default function CharacterSetupPage() {
                   ) : (
                     <>
                       <Sparkles className="w-4 h-4 mr-2" />
-                      生成
+                      {t('character.identity.generate')}
                     </>
                   )}
                 </Button>
@@ -337,18 +474,19 @@ export default function CharacterSetupPage() {
           <div className="space-y-4">
             <Label className="text-base font-medium text-gray-700 flex items-center gap-2">
               <Palette className="w-4 h-4" />
-              绘画风格
+              {t('character.style')}
             </Label>
             <Select value={characterData.style} onValueChange={handleStyleChange}>
               <SelectTrigger className="text-base py-3 rounded-xl border-gray-200 focus:border-blue-500">
-                <SelectValue placeholder="选择绘画风格" />
+                <SelectValue placeholder={t('character.style.placeholder')} />
               </SelectTrigger>
               <SelectContent>
-                {Object.entries(STYLE_OPTIONS).map(([key, style]) => (
-                  <SelectItem key={key} value={key}>
-                    {style.name}
-                  </SelectItem>
-                ))}
+                <SelectItem value="watercolor">{t('character.style.watercolor')}</SelectItem>
+                <SelectItem value="papercut">{t('character.style.papercut')}</SelectItem>
+                <SelectItem value="cartoon">{t('character.style.cartoon')}</SelectItem>
+                <SelectItem value="vintage">{t('character.style.vintage')}</SelectItem>
+                <SelectItem value="minimal">{t('character.style.minimal')}</SelectItem>
+                <SelectItem value="custom">{t('character.style.custom')}</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -357,12 +495,12 @@ export default function CharacterSetupPage() {
           {characterData.style === 'custom' && (
             <div className="space-y-3">
               <Label htmlFor="customStyle" className="text-base font-medium text-gray-700">
-                自定义风格描述
+                {t('character.style.custom.label')}
               </Label>
               <Input
                 id="customStyle"
                 type="text"
-                placeholder="请输入自定义的绘画风格描述（英文）"
+                placeholder={t('character.style.custom.placeholder')}
                 value={characterData.customStyle}
                 onChange={(e) => setCharacterData(prev => ({ ...prev, customStyle: e.target.value }))}
                 className="text-base py-3 rounded-xl border-gray-200 focus:border-blue-500"
@@ -373,7 +511,7 @@ export default function CharacterSetupPage() {
           {/* 角色描述显示区域 */}
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <Label className="text-base font-medium text-gray-700">角色形象描述</Label>
+              <Label className="text-base font-medium text-gray-700">{t('character.description')}</Label>
               <Button
                 onClick={handleGeneratePreview}
                 disabled={isGeneratingPreview || !characterData.description.trim()}
@@ -397,13 +535,13 @@ export default function CharacterSetupPage() {
               value={characterData.description}
               onChange={(e) => setCharacterData(prev => ({ ...prev, description: e.target.value }))}
               className="min-h-[120px] text-base rounded-xl border-gray-200 focus:border-blue-500"
-              placeholder="角色形象描述将在这里显示..."
+              placeholder={t('character.description.placeholder')}
             />
             
             {/* 风格提示 */}
             {characterData.style !== 'custom' && (
               <p className="text-sm text-gray-500">
-                当前风格：{STYLE_OPTIONS[characterData.style]?.name} - {STYLE_OPTIONS[characterData.style]?.keywords}
+                {t('character.style.current')}: {STYLE_OPTIONS[characterData.style]?.name} - {STYLE_OPTIONS[characterData.style]?.keywords}
               </p>
             )}
           </div>
@@ -414,14 +552,14 @@ export default function CharacterSetupPage() {
               <CardHeader>
                 <CardTitle className="flex items-center text-lg">
                   <Image className="w-5 h-5 mr-2 text-purple-500" />
-                  角色预览
+                  {t('character.preview.title')}
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="text-center">
                   <img 
                     src={previewImage} 
-                    alt="角色预览" 
+                    alt={t('character.preview.alt')} 
                     className="max-w-full h-auto rounded-lg mx-auto border border-gray-200"
                     style={{ maxHeight: '400px' }}
                   />
@@ -446,7 +584,7 @@ export default function CharacterSetupPage() {
                 <CardContent className="flex flex-col items-center justify-center py-12">
                   <Image className="w-16 h-16 text-gray-400 mb-4" />
                   <p className="text-gray-500 text-center mb-4">
-                    点击"人物预览"按钮查看角色形象
+                    {t('character.preview.placeholder')}
                   </p>
                   <Button
                     onClick={handleGeneratePreview}
