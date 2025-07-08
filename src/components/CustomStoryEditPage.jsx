@@ -24,7 +24,8 @@ import {
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useLanguage } from '../contexts/LanguageContext.jsx'
-import { generateTextToImageComplete } from '@/lib/liblibai.js'
+import { generateTextToImageComplete, generateImageToImageComplete } from '@/lib/liblibai.js'
+import { translateCharacterDescriptionToEnglish } from '@/lib/promptTranslator.js'
 import { callQwenChat } from '@/lib/qwen.js'
 
 export default function CustomStoryEditPage() {
@@ -168,7 +169,7 @@ export default function CustomStoryEditPage() {
     setStoryPages(newPages)
   }
 
-  // 生成单页插画
+  // 生成单页插画（图生图模式）
   const handleGenerateImage = async (pageIndex) => {
     const page = storyPages[pageIndex]
     if (!page.content.trim()) {
@@ -176,35 +177,124 @@ export default function CustomStoryEditPage() {
       return
     }
 
+    // 检查是否有角色预览图像
+    const referenceImageUrl = characterData.previewImage
+    if (!referenceImageUrl) {
+      const confirmContinue = window.confirm(
+        '建议先在角色设置页面生成角色预览图像，以确保插画中的角色形象一致性。\n\n是否继续使用文生图模式？'
+      )
+      if (!confirmContinue) {
+        return
+      }
+    }
+
     setIsGeneratingImage(pageIndex)
     
     try {
-      // 构建图像生成提示词
-      const imagePrompt = `${characterData.description || characterData.name}, ${page.content}, children's book illustration style, bright and warm colors, simple and clear composition, suitable for children`
+      // 构建基础提示词（先用中文描述，然后翻译成英文）
+      let basePrompt = `${characterData.description || characterData.name}, ${page.content}`
       
-      // 调用LiblibAI生成图像
-      const imageResult = await generateTextToImageComplete(
-        imagePrompt, // 第一个参数：prompt字符串
-        null,        // 第二个参数：onProgress回调
-        {            // 第三个参数：options对象
-          model: 'kontext-v1',
-          width: 1024,
-          height: 1024,
-          guidance_scale: 7.5,
-          num_inference_steps: 20,
-          scheduler: 'DPM++ 2M Karras'
+      // 翻译提示词为英文（确保图像生成使用英文关键词）
+      console.log('🔤 原始提示词:', basePrompt)
+      
+      // 检查是否包含中文，如果包含则翻译
+      let englishPrompt = basePrompt
+      if (/[\u4e00-\u9fff]/.test(basePrompt)) {
+        console.log('🔄 检测到中文，开始翻译为英文...')
+        try {
+          const translatePrompt = `请将以下中文内容翻译为英文，保持角色特征和场景描述的完整性，适合图像生成使用：
+
+${basePrompt}
+
+要求：
+1. 翻译为英文
+2. 保持原意不变
+3. 适合图像生成
+4. 简洁明了
+
+英文翻译：`
+
+          const translateResult = await callQwenChat({
+            messages: [{ role: 'user', content: translatePrompt }],
+            temperature: 0.3
+          }, 'TRANSLATION')
+
+          if (translateResult?.choices?.[0]?.message?.content) {
+            englishPrompt = translateResult.choices[0].message.content.trim()
+            console.log('✅ 翻译结果:', englishPrompt)
+          }
+        } catch (translateError) {
+          console.warn('翻译失败，使用简单映射:', translateError)
+          // 回退到简单翻译
+          englishPrompt = translateCharacterDescriptionToEnglish(basePrompt, currentLanguage)
         }
-      )
+      }
+      
+      // 添加通用的英文绘本风格关键词
+      const finalPrompt = `${englishPrompt}, children's book illustration style, bright and warm colors, simple and clear composition, suitable for children, appropriate for children, wholesome, innocent, educational`
+      
+      console.log('🎨 最终英文提示词:', finalPrompt)
+
+      let imageResult = null
+
+      // 如果有角色预览图像，使用图生图模式
+      if (referenceImageUrl) {
+        console.log('🖼️ 使用图生图模式，参考图像:', referenceImageUrl)
+        
+        imageResult = await generateImageToImageComplete(
+          finalPrompt,     // 英文提示词
+          referenceImageUrl, // 参考图像URL（角色预览图）
+          (progress) => {
+            console.log('图生图进度:', progress)
+          },
+          {
+            model: 'kontext-v1',
+            width: 1024,
+            height: 1024,
+            guidance_scale: 7.5,
+            num_inference_steps: 20,
+            scheduler: 'DPM++ 2M Karras',
+            strength: 0.7  // 控制对参考图像的保持程度，0.7表示保持70%的原图特征
+          }
+        )
+        
+        console.log('图生图结果:', imageResult)
+      } else {
+        // 如果没有角色预览图像，使用文生图模式
+        console.log('📝 使用文生图模式')
+        
+        imageResult = await generateTextToImageComplete(
+          finalPrompt,
+          (progress) => {
+            console.log('文生图进度:', progress)
+          },
+          {
+            model: 'kontext-v1',
+            width: 1024,
+            height: 1024,
+            guidance_scale: 7.5,
+            num_inference_steps: 20,
+            scheduler: 'DPM++ 2M Karras'
+          }
+        )
+        
+        console.log('文生图结果:', imageResult)
+      }
 
       // 更新页面数据
-      const newPages = [...storyPages]
-      newPages[pageIndex].imageUrl = imageResult.imageUrl
-      newPages[pageIndex].imagePrompt = imagePrompt
-      setStoryPages(newPages)
+      if (imageResult && imageResult.imageUrl) {
+        const newPages = [...storyPages]
+        newPages[pageIndex].imageUrl = imageResult.imageUrl
+        newPages[pageIndex].imagePrompt = finalPrompt
+        setStoryPages(newPages)
+        console.log('✅ 插画生成成功，图片URL:', imageResult.imageUrl)
+      } else {
+        throw new Error('未获取到有效的图片URL')
+      }
 
     } catch (error) {
       console.error('生成图像失败:', error)
-      alert('生成图像失败，请稍后重试')
+      alert(`生成图像失败：${error.message || '请稍后重试'}`)
     } finally {
       setIsGeneratingImage(null)
     }
