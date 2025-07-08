@@ -5,13 +5,18 @@ import { Label } from '@/components/ui/label.jsx'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group.jsx'
 import { Textarea } from '@/components/ui/textarea.jsx'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card.jsx'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs.jsx'
-import { ArrowLeft, ArrowRight, User, Sparkles, Settings, Loader2, Palette, Camera, Shirt, Heart, Wand2, Eye, RefreshCw } from 'lucide-react'
+import { ArrowLeft, ArrowRight, User, Sparkles, Loader2, Eye, RefreshCw, Image } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useLanguage } from '../contexts/LanguageContext.jsx'
 import { CHARACTER_STRATEGY } from '@/lib/characterConsistency.js'
-import { optimizeCharacterDescription, callQwenChat } from '@/lib/qwen.js'
+import { callQwenChat } from '@/lib/qwen.js'
 import { generateTextToImageComplete } from '@/lib/liblibai.js'
+
+// 预设角色关键词
+const PRESET_KEYWORDS = {
+  human: "20-25岁的亚洲女性，拥有苗条中等身材，黑色长直发，大而明亮的深棕色眼睛，小巧挺拔的鼻子和樱桃小嘴，皮肤白皙细腻，表情温柔自信。她的着装风格为时尚休闲，包括白色宽松T恤、浅蓝色高腰牛仔裤和白色运动鞋，并搭配银色项链、耳钉和黑色双肩包。姿态自然，眼神专注，置身于柔和光线下的城市街头，整体呈现出超写实主义的电影感，充满积极、乐观和时尚的氛围。",
+  animal: "一只幼年雄性柴犬，体型小巧毛茸茸，毛色为棕黄色，腹部和胸部为白色。它拥有一双圆而黑亮的眼睛，黑色湿润的小鼻子，微张的嘴巴露出粉色舌头，以及直立的三角形耳朵，表情活泼天真。身体特征包括卷曲蓬松的尾巴和粉嫩的小爪子。它坐立在阳光明媚的草地上，歪头专注，整体风格为卡通化，线条流畅，色彩鲜明，营造出宁静、温馨、快乐和治愈的氛围。"
+}
 
 export default function CharacterSetupPage() {
   const navigate = useNavigate()
@@ -20,53 +25,14 @@ export default function CharacterSetupPage() {
     name: '',
     age: 6,
     identity: 'human',
-    customIdentity: '', // 新增：自定义身份
-    customDescription: '',
-    optimizedDescription: '',
-    strategy: CHARACTER_STRATEGY.HYBRID,
-    // 详细参数模板
-    coreFeatures: '',
-    clothingAndAccessories: '',
-    sceneAndEnvironment: '',
-    emotionsAndPose: '',
-    artStyle: ''
+    customIdentity: '', // 自定义身份
+    description: PRESET_KEYWORDS.human, // 使用description替代复杂的参数
+    strategy: CHARACTER_STRATEGY.HYBRID
   })
 
-  const [showAdvanced, setShowAdvanced] = useState(true) // 默认展开
-  const [isOptimizing, setIsOptimizing] = useState(false)
-  const [activeTab, setActiveTab] = useState('detailed') // 默认详细参数模式
-  const [isGeneratingIdentity, setIsGeneratingIdentity] = useState(false) // 新增：生成身份描述状态
-  const [previewImage, setPreviewImage] = useState(null) // 新增：预览图片
-  const [isGeneratingPreview, setIsGeneratingPreview] = useState(false) // 新增：生成预览状态
-
-  // 参数模板示例
-  const parameterExamples = {
-    coreFeatures: {
-      'zh-CN': '例如：女性，年轻成年人，亚洲人，苗条身材，长直黑发，棕色眼睛',
-      'zh-TW': '例如：女性，年輕成年人，亞洲人，苗條身材，長直黑髮，棕色眼睛',
-      'en': 'e.g., female, young adult, asian, slim body, long straight black hair, brown eyes'
-    },
-    clothingAndAccessories: {
-      'zh-CN': '例如：商务套装，白色衬衫，黑色西装外套，铅笔裙，高跟鞋，简单项链，手表',
-      'zh-TW': '例如：商務套裝，白色襯衫，黑色西裝外套，鉛筆裙，高跟鞋，簡單項鍊，手錶',
-      'en': 'e.g., business suit, white shirt, black blazer, pencil skirt, high heels, simple necklace, watch'
-    },
-    sceneAndEnvironment: {
-      'zh-CN': '例如：现代办公室，明亮的自然光，白天，室内，窗外城市景观',
-      'zh-TW': '例如：現代辦公室，明亮的自然光，白天，室內，窗外城市景觀',
-      'en': 'e.g., modern office, bright natural light, daytime, indoors, city view through window'
-    },
-    emotionsAndPose: {
-      'zh-CN': '例如：自信的表情，专注，站立，双臂交叉，微笑',
-      'zh-TW': '例如：自信的表情，專注，站立，雙臂交叉，微笑',
-      'en': 'e.g., confident expression, focused, standing, arms crossed, slight smile'
-    },
-    artStyle: {
-      'zh-CN': '例如：写实风格，超现实，8K，高细节，杰作，详细皮肤，专业摄影',
-      'zh-TW': '例如：寫實風格，超現實，8K，高細節，傑作，詳細皮膚，專業攝影',
-      'en': 'e.g., photorealistic, ultra realistic, 8k, high detail, masterpiece, detailed skin, professional photography'
-    }
-  }
+  const [isGeneratingIdentity, setIsGeneratingIdentity] = useState(false) // 生成身份描述状态
+  const [previewImage, setPreviewImage] = useState(null) // 预览图片
+  const [isGeneratingPreview, setIsGeneratingPreview] = useState(false) // 生成预览状态
 
   const handleNext = () => {
     // 如果姓名为空，生成随机姓名
@@ -81,23 +47,18 @@ export default function CharacterSetupPage() {
       setCharacterData(prev => ({ ...prev, name: randomName }))
     }
     
-    // 合并详细参数到自定义描述中
-    const detailedDescription = combineDetailedParameters(characterData)
-    
     // 构建最终的角色身份描述
     let finalIdentity = characterData.identity
     if (characterData.identity === 'other' && characterData.customIdentity) {
       finalIdentity = characterData.customIdentity
     }
     
-    // 如果有优化后的描述，使用优化后的描述作为customDescription
+    // 构建最终数据
     const finalData = {
       ...characterData,
       identity: finalIdentity,
-      customDescription: detailedDescription || characterData.optimizedDescription || characterData.customDescription,
-      strategy: (detailedDescription || characterData.customDescription || characterData.optimizedDescription) 
-        ? CHARACTER_STRATEGY.HYBRID 
-        : CHARACTER_STRATEGY.PREDEFINED
+      customDescription: characterData.description,
+      strategy: CHARACTER_STRATEGY.HYBRID
     }
     
     // 保存数据到localStorage
@@ -105,120 +66,55 @@ export default function CharacterSetupPage() {
     navigate('/story-setup')
   }
 
-  // 合并详细参数为完整描述
-  const combineDetailedParameters = (data) => {
-    const parts = []
-    if (data.coreFeatures) parts.push(data.coreFeatures)
-    if (data.clothingAndAccessories) parts.push(data.clothingAndAccessories)
-    if (data.sceneAndEnvironment) parts.push(data.sceneAndEnvironment)
-    if (data.emotionsAndPose) parts.push(data.emotionsAndPose)
-    if (data.artStyle) parts.push(data.artStyle)
-    
-    return parts.length > 0 ? parts.join(', ') : ''
-  }
-
-  const handleOptimizeDescription = async () => {
-    const descriptionToOptimize = activeTab === 'detailed' 
-      ? combineDetailedParameters(characterData)
-      : characterData.customDescription
-
-    if (!descriptionToOptimize.trim()) {
-      return
-    }
-
-    setIsOptimizing(true)
-    try {
-      const basicInfo = {
-        age: characterData.age,
-        gender: characterData.gender,
-        identity: characterData.identity
-      }
-      
-      const optimizedResult = await optimizeCharacterDescription(
-        descriptionToOptimize, 
-        basicInfo
-      )
-      
-      setCharacterData(prev => ({
-        ...prev,
-        optimizedDescription: optimizedResult
-      }))
-    } catch (error) {
-      console.error('Optimize character description failed:', error)
-      // 可以添加错误提示
-    } finally {
-      setIsOptimizing(false)
-    }
-  }
-
-  // 新增：根据自定义身份生成角色描述
+  // 根据自定义身份生成关键词（优化为kontext模型）
   const handleGenerateFromCustomIdentity = async (customIdentity) => {
     if (!customIdentity.trim()) return
     
     setIsGeneratingIdentity(true)
     try {
-      const prompt = `请为"${customIdentity}"这个角色身份生成详细的人物形象描述。请用以下格式回复：
+      const prompt = `请为"${customIdentity}"这个角色身份生成适合Kontext图像模型的详细关键词描述。
 
-核心人物特征：[外貌特征，如：年龄外观、身材、发型、面容特点等]
-服装与配饰：[服装风格、颜色、配饰等]
-情绪与姿态：[常见表情、姿态、性格特点等]
-艺术风格与质量：[适合的艺术风格、画面质量要求等]
+要求：
+1. 生成一段完整的、适合图像生成的关键词描述
+2. 包含外貌特征、服装风格、表情姿态、环境场景、艺术风格等
+3. 确保内容积极正面，适合儿童绘本
+4. 风格要生动有趣，富有想象力
+5. 直接返回关键词描述，不需要分类标题
 
-请确保描述适合儿童绘本，积极正面，富有想象力。`
+示例格式：一个/一只...的${customIdentity}，拥有...特征，穿着...，表情...，置身于...环境中，整体呈现...风格。
+
+请直接生成关键词描述：`
 
       const result = await callQwenChat({
         messages: [{ role: 'user', content: prompt }],
-        temperature: 0.7
+        temperature: 0.8
       }, 'CHARACTER_GENERATION')
 
       if (result?.content) {
-        // 解析返回的内容并填入相应字段
-        parseAndFillCharacterDescription(result.content)
+        setCharacterData(prev => ({ 
+          ...prev, 
+          description: result.content.trim()
+        }))
       }
     } catch (error) {
       console.error('生成角色描述失败:', error)
+      alert('生成失败，请稍后重试')
     } finally {
       setIsGeneratingIdentity(false)
     }
   }
 
-  // 解析并填充角色描述
-  const parseAndFillCharacterDescription = (content) => {
-    const lines = content.split('\n').filter(line => line.trim())
-    const newData = { ...characterData }
-
-    for (const line of lines) {
-      if (line.includes('核心人物特征：') || line.includes('核心人物特征:')) {
-        newData.coreFeatures = line.split('：')[1] || line.split(':')[1] || ''
-      } else if (line.includes('服装与配饰：') || line.includes('服装与配饰:')) {
-        newData.clothingAndAccessories = line.split('：')[1] || line.split(':')[1] || ''
-      } else if (line.includes('情绪与姿态：') || line.includes('情绪与姿态:')) {
-        newData.emotionsAndPose = line.split('：')[1] || line.split(':')[1] || ''
-      } else if (line.includes('艺术风格与质量：') || line.includes('艺术风格与质量:')) {
-        newData.artStyle = line.split('：')[1] || line.split(':')[1] || ''
-      }
-    }
-
-    // 如果没有场景环境，添加默认的
-    if (!newData.sceneAndEnvironment) {
-      newData.sceneAndEnvironment = '简洁的背景，适合儿童绘本的温馨场景'
-    }
-
-    setCharacterData(newData)
-  }
-
-  // 新增：生成角色预览
+  // 生成角色预览
   const handleGeneratePreview = async () => {
-    const combinedDescription = combineDetailedParameters(characterData)
-    if (!combinedDescription.trim()) {
-      alert('请先填写角色描述信息')
+    if (!characterData.description.trim()) {
+      alert('请先填写或生成角色描述')
       return
     }
 
     setIsGeneratingPreview(true)
     try {
       // 构建适合LiblibAI的英文提示词
-      let prompt = `children's book character, ${combinedDescription}, cartoon style, friendly, suitable for kids, high quality, detailed`
+      let prompt = `children's book character, ${characterData.description}, cartoon style, friendly, suitable for kids, high quality, detailed`
       
       // 如果有自定义身份，加入到提示词中
       if (characterData.customIdentity) {
@@ -238,6 +134,19 @@ export default function CharacterSetupPage() {
     } finally {
       setIsGeneratingPreview(false)
     }
+  }
+
+  // 处理身份选择变化
+  const handleIdentityChange = (value) => {
+    setCharacterData(prev => ({ 
+      ...prev, 
+      identity: value,
+      description: value === 'other' ? '' : PRESET_KEYWORDS[value] || '',
+      customIdentity: value === 'other' ? prev.customIdentity : ''
+    }))
+    
+    // 清除预览图片
+    setPreviewImage(null)
   }
 
   const handleBack = () => {
@@ -304,13 +213,7 @@ export default function CharacterSetupPage() {
             <Label className="text-base font-medium text-gray-700">{t('character.identity')}</Label>
             <RadioGroup
               value={characterData.identity}
-              onValueChange={(value) => {
-                setCharacterData(prev => ({ ...prev, identity: value }))
-                // 当选择非"其他"选项时，清空自定义身份
-                if (value !== 'other') {
-                  setCharacterData(prev => ({ ...prev, customIdentity: '' }))
-                }
-              }}
+              onValueChange={handleIdentityChange}
               className="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-8"
             >
               <div className="flex items-center space-x-2">
@@ -364,16 +267,13 @@ export default function CharacterSetupPage() {
             </div>
           )}
 
-          {/* 角色形象设计 */}
-          <div className="border-t border-gray-100 pt-8">
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center">
-                <Settings className="w-5 h-5 mr-3 text-gray-500" />
-                <span className="text-base font-medium text-gray-700">{t('character.advanced')}</span>
-              </div>
+          {/* 角色描述显示区域 */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <Label className="text-base font-medium text-gray-700">角色形象描述</Label>
               <Button
                 onClick={handleGeneratePreview}
-                disabled={isGeneratingPreview || !combineDetailedParameters(characterData).trim()}
+                disabled={isGeneratingPreview || !characterData.description.trim()}
                 className="bg-purple-500 hover:bg-purple-600 text-white px-4 py-2 rounded-lg"
               >
                 {isGeneratingPreview ? (
@@ -389,20 +289,33 @@ export default function CharacterSetupPage() {
                 )}
               </Button>
             </div>
+            
+            <Textarea
+              value={characterData.description}
+              onChange={(e) => setCharacterData(prev => ({ ...prev, description: e.target.value }))}
+              className="min-h-[120px] text-base rounded-xl border-gray-200 focus:border-blue-500"
+              placeholder="角色形象描述将在这里显示..."
+            />
           </div>
 
           {/* 预览图片显示 */}
-          {previewImage && (
-            <div className="mb-6">
-              <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
+          {previewImage ? (
+            <Card className="border-gray-200">
+              <CardHeader>
+                <CardTitle className="flex items-center text-lg">
+                  <Image className="w-5 h-5 mr-2 text-purple-500" />
+                  角色预览
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
                 <div className="text-center">
                   <img 
                     src={previewImage} 
                     alt="角色预览" 
-                    className="max-w-full h-auto rounded-lg mx-auto"
-                    style={{ maxHeight: '300px' }}
+                    className="max-w-full h-auto rounded-lg mx-auto border border-gray-200"
+                    style={{ maxHeight: '400px' }}
                   />
-                  <div className="mt-2 flex justify-center space-x-2">
+                  <div className="mt-4 flex justify-center space-x-2">
                     <Button
                       onClick={handleGeneratePreview}
                       disabled={isGeneratingPreview}
@@ -414,207 +327,38 @@ export default function CharacterSetupPage() {
                     </Button>
                   </div>
                 </div>
-              </div>
-            </div>
-          )}
-
-          {/* 角色形象设计内容 */}
-          <Card className="border-gray-200">
-              <CardHeader className="pb-4">
-                <CardTitle className="flex items-center text-lg">
-                  <Sparkles className="w-5 h-5 mr-2 text-blue-500" />
-                  {t('character.ai.title')}
-                </CardTitle>
-                <CardDescription>
-                  {t('character.ai.description')}
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                {/* 描述输入模式选择 */}
-                <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-                  <TabsList className="grid w-full grid-cols-2">
-                    <TabsTrigger value="simple" className="flex items-center gap-2">
-                      <Wand2 className="w-4 h-4" />
-                      简单描述
-                    </TabsTrigger>
-                    <TabsTrigger value="detailed" className="flex items-center gap-2">
-                      <Palette className="w-4 h-4" />
-                      详细参数
-                    </TabsTrigger>
-                  </TabsList>
-                  
-                  {/* 简单描述模式 */}
-                  <TabsContent value="simple" className="space-y-4">
-                    <div className="space-y-3">
-                      <Label htmlFor="customDescription" className="text-base font-medium text-gray-700">
-                        {t('character.ai.input.label')}
-                      </Label>
-                      <Textarea
-                        id="customDescription"
-                        placeholder={t('character.ai.input.placeholder')}
-                        value={characterData.customDescription}
-                        onChange={(e) => setCharacterData(prev => ({ ...prev, customDescription: e.target.value }))}
-                        className="min-h-[100px] text-base rounded-xl border-gray-200 focus:border-blue-500"
-                      />
-                      <p className="text-sm text-gray-500">
-                        {t('character.ai.input.note')}
-                      </p>
-                    </div>
-                  </TabsContent>
-                  
-                  {/* 详细参数模式 */}
-                  <TabsContent value="detailed" className="space-y-6">
-                    <div className="space-y-6">
-                      {/* 核心人物特征 */}
-                      <div className="space-y-3">
-                        <Label className="text-base font-medium text-gray-700 flex items-center gap-2">
-                          <User className="w-4 h-4" />
-                          核心人物特征
-                        </Label>
-                        <Textarea
-                          placeholder={parameterExamples.coreFeatures[currentLanguage] || parameterExamples.coreFeatures['en']}
-                          value={characterData.coreFeatures}
-                          onChange={(e) => setCharacterData(prev => ({ ...prev, coreFeatures: e.target.value }))}
-                          className="min-h-[80px] text-base rounded-xl border-gray-200 focus:border-blue-500"
-                        />
-                      </div>
-
-                      {/* 服装与配饰 */}
-                      <div className="space-y-3">
-                        <Label className="text-base font-medium text-gray-700 flex items-center gap-2">
-                          <Shirt className="w-4 h-4" />
-                          服装与配饰
-                        </Label>
-                        <Textarea
-                          placeholder={parameterExamples.clothingAndAccessories[currentLanguage] || parameterExamples.clothingAndAccessories['en']}
-                          value={characterData.clothingAndAccessories}
-                          onChange={(e) => setCharacterData(prev => ({ ...prev, clothingAndAccessories: e.target.value }))}
-                          className="min-h-[80px] text-base rounded-xl border-gray-200 focus:border-blue-500"
-                        />
-                      </div>
-
-                      {/* 场景与环境 */}
-                      <div className="space-y-3">
-                        <Label className="text-base font-medium text-gray-700 flex items-center gap-2">
-                          <Camera className="w-4 h-4" />
-                          场景与环境
-                        </Label>
-                        <Textarea
-                          placeholder={parameterExamples.sceneAndEnvironment[currentLanguage] || parameterExamples.sceneAndEnvironment['en']}
-                          value={characterData.sceneAndEnvironment}
-                          onChange={(e) => setCharacterData(prev => ({ ...prev, sceneAndEnvironment: e.target.value }))}
-                          className="min-h-[80px] text-base rounded-xl border-gray-200 focus:border-blue-500"
-                        />
-                      </div>
-
-                      {/* 情绪与姿态 */}
-                      <div className="space-y-3">
-                        <Label className="text-base font-medium text-gray-700 flex items-center gap-2">
-                          <Heart className="w-4 h-4" />
-                          情绪与姿态
-                        </Label>
-                        <Textarea
-                          placeholder={parameterExamples.emotionsAndPose[currentLanguage] || parameterExamples.emotionsAndPose['en']}
-                          value={characterData.emotionsAndPose}
-                          onChange={(e) => setCharacterData(prev => ({ ...prev, emotionsAndPose: e.target.value }))}
-                          className="min-h-[80px] text-base rounded-xl border-gray-200 focus:border-blue-500"
-                        />
-                      </div>
-
-                      {/* 艺术风格与质量 */}
-                      <div className="space-y-3">
-                        <Label className="text-base font-medium text-gray-700 flex items-center gap-2">
-                          <Palette className="w-4 h-4" />
-                          艺术风格与质量
-                        </Label>
-                        <Textarea
-                          placeholder={parameterExamples.artStyle[currentLanguage] || parameterExamples.artStyle['en']}
-                          value={characterData.artStyle}
-                          onChange={(e) => setCharacterData(prev => ({ ...prev, artStyle: e.target.value }))}
-                          className="min-h-[80px] text-base rounded-xl border-gray-200 focus:border-blue-500"
-                        />
-                      </div>
-                    </div>
-                  </TabsContent>
-                </Tabs>
-
-                {/* 优化按钮 */}
-                <div className="flex justify-center">
+              </CardContent>
+            </Card>
+          ) : (
+            // 预览占位框
+            characterData.description.trim() && (
+              <Card className="border-dashed border-2 border-gray-300">
+                <CardContent className="flex flex-col items-center justify-center py-12">
+                  <Image className="w-16 h-16 text-gray-400 mb-4" />
+                  <p className="text-gray-500 text-center mb-4">
+                    点击"人物预览"按钮查看角色形象
+                  </p>
                   <Button
-                    onClick={handleOptimizeDescription}
-                    disabled={
-                      (activeTab === 'simple' && !characterData.customDescription.trim()) ||
-                      (activeTab === 'detailed' && !combineDetailedParameters(characterData).trim()) ||
-                      isOptimizing
-                    }
-                    className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded-lg"
+                    onClick={handleGeneratePreview}
+                    disabled={isGeneratingPreview}
+                    className="bg-purple-500 hover:bg-purple-600 text-white"
                   >
-                    {isOptimizing ? (
+                    {isGeneratingPreview ? (
                       <>
                         <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        {t('character.ai.optimizing')}
+                        {t('character.preview.generating')}
                       </>
                     ) : (
                       <>
-                        <Sparkles className="w-4 h-4 mr-2" />
-                        {t('character.ai.optimize')}
+                        <Eye className="w-4 h-4 mr-2" />
+                        {t('character.preview')}
                       </>
                     )}
                   </Button>
-                </div>
-
-                {/* 优化结果显示 */}
-                {characterData.optimizedDescription && (
-                  <div className="space-y-3">
-                    <Label className="text-base font-medium text-gray-700">
-                      {t('character.ai.result.label')}
-                    </Label>
-                    <Textarea
-                      value={characterData.optimizedDescription}
-                      onChange={(e) => setCharacterData(prev => ({ ...prev, optimizedDescription: e.target.value }))}
-                      className="min-h-[120px] text-base rounded-xl border-green-200 focus:border-green-500 bg-green-50"
-                      placeholder={t('character.ai.result.label')}
-                    />
-                    <p className="text-sm text-gray-500">
-                      {t('character.ai.result.note')}
-                    </p>
-                    
-                    {/* 操作按钮 */}
-                    <div className="flex justify-center space-x-3 pt-2">
-                      <Button
-                        variant="outline"
-                        onClick={() => setCharacterData(prev => ({ ...prev, optimizedDescription: '' }))}
-                        className="text-sm px-4 py-2"
-                      >
-                        {t('character.ai.clear')}
-                      </Button>
-                      <Button
-                        onClick={handleOptimizeDescription}
-                        disabled={
-                          (activeTab === 'simple' && !characterData.customDescription.trim()) ||
-                          (activeTab === 'detailed' && !combineDetailedParameters(characterData).trim()) ||
-                          isOptimizing
-                        }
-                        variant="outline"
-                        className="text-sm px-4 py-2"
-                      >
-                        {isOptimizing ? (
-                          <>
-                            <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-                            {t('character.ai.reoptimizing')}
-                          </>
-                        ) : (
-                          <>
-                            <Sparkles className="w-3 h-3 mr-1" />
-                            {t('character.ai.reoptimize')}
-                          </>
-                        )}
-                      </Button>
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+            )
+          )}
         </div>
       </div>
 
