@@ -84,13 +84,14 @@ export default function CharacterSetupPage() {
       finalIdentity = characterData.customIdentity
     }
     
-    // 构建最终数据，包含风格信息
+    // 构建最终数据，包含风格信息和预览图片
     const finalData = {
       ...characterData,
       identity: finalIdentity,
       customDescription: characterData.description,
       artStyle: characterData.style === 'custom' ? characterData.customStyle : STYLE_OPTIONS[characterData.style]?.keywords || '',
-      strategy: CHARACTER_STRATEGY.HYBRID
+      strategy: CHARACTER_STRATEGY.HYBRID,
+      previewImage: previewImage // 保存角色预览图片
     }
     
     // 保存数据到localStorage

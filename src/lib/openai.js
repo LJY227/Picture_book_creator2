@@ -1270,25 +1270,22 @@ async function generateImagesForPages(pages, character, imageEngine, onProgress,
     characterDefinition = getStandardCharacterDefinition(character);
   }
 
-  // 如果使用角色一致性且使用LiblibAI引擎，先生成主角标准形象
+  // 如果使用角色一致性且使用LiblibAI引擎，直接使用角色设计时生成的图片
   if (useCharacterConsistency && imageEngine === 'liblibai') {
-    console.log('🎨 启用角色一致性模式，先生成主角标准形象...');
-    try {
-      masterCharacterData = await generateMasterCharacterImage(
-        characterDefinition,
-        (status, progress) => {
-          console.log(`主角生成: ${status} - ${progress}%`);
-        }
-      );
-      
-      if (masterCharacterData.success) {
-        console.log('✅ 主角标准形象生成成功:', masterCharacterData.masterImageUrl);
-      } else {
-        console.log('⚠️ 主角生成失败，将使用传统模式');
-        useCharacterConsistency = false;
-      }
-    } catch (error) {
-      console.error('❌ 主角生成失败:', error);
+    console.log('🎨 启用角色一致性模式，使用角色设计时生成的图片...');
+    
+    // 从角色数据中获取预览图片URL
+    const previewImageUrl = character.previewImage;
+    
+    if (previewImageUrl) {
+      console.log('✅ 找到角色预览图片，将用作主角形象:', previewImageUrl);
+      masterCharacterData = {
+        success: true,
+        masterImageUrl: previewImageUrl,
+        characterDefinition: characterDefinition
+      };
+    } else {
+      console.log('⚠️ 未找到角色预览图片，将使用传统模式');
       useCharacterConsistency = false;
     }
   }

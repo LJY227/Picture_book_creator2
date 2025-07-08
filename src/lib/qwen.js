@@ -1131,18 +1131,23 @@ async function generateImagesForPages(pages, character, imageEngine, onProgress,
     masterImageUrl: null
   };
 
-  // 如果使用角色一致性，先生成主角形象
+  // 如果使用角色一致性，直接使用角色设计时生成的图片
   if (useCharacterConsistency) {
-    try {
-      console.log('🎨 生成主角一致性形象...');
-      const masterResult = await generateMasterCharacterImage(character, (status, progress) => {
-        onProgress && onProgress(`生成主角形象: ${status}`, Math.min(progress || 0, 50));
-      });
-      results.characterDefinition = masterResult.characterDefinition;
-      results.masterImageUrl = masterResult.masterImageUrl;  // 修正属性名
-      console.log('✅ 主角形象生成完成');
-    } catch (error) {
-      console.warn('⚠️ 主角形象生成失败，将使用标准模式:', error);
+    console.log('🎨 使用角色设计时生成的图片...');
+    
+    // 从角色数据中获取预览图片URL
+    const previewImageUrl = character.previewImage;
+    
+    if (previewImageUrl) {
+      console.log('✅ 找到角色预览图片，将用作主角形象:', previewImageUrl);
+      results.masterImageUrl = previewImageUrl;
+      
+      // 获取角色定义
+      const { getEnhancedCharacterDefinition, getRecommendedStrategy } = await import('./characterConsistency.js');
+      const strategy = getRecommendedStrategy(character);
+      results.characterDefinition = await getEnhancedCharacterDefinition(character, strategy);
+    } else {
+      console.log('⚠️ 未找到角色预览图片，将使用传统模式');
       useCharacterConsistency = false;
     }
   }
