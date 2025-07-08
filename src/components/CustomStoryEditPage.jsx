@@ -56,54 +56,67 @@ export default function CustomStoryEditPage() {
     console.log('Story data:', story)
     console.log('Content data:', content)
     
-    // 检查是否为测试路径，如果是，则使用测试数据
+    // 检查是否为测试路径或直接访问
     const isTestPath = window.location.pathname === '/test-custom'
+    const isDirectAccess = window.location.pathname === '/custom-story-edit'
     
-    // 放松验证条件，只检查基本数据是否存在
-    if (!isTestPath && (!character || Object.keys(character).length === 0 || !story || Object.keys(story).length === 0)) {
-      console.log('❌ 数据验证失败，跳转到首页')
-      console.log('Character exists:', !!character && Object.keys(character).length > 0)
-      console.log('Story exists:', !!story && Object.keys(story).length > 0)
-      navigate('/')
-      return
+    // 更宽松的验证逻辑 - 如果是直接访问或数据缺失，提供默认数据
+    if (isTestPath || isDirectAccess || !character || Object.keys(character).length === 0 || !story || Object.keys(story).length === 0) {
+      console.log('🔄 使用默认数据或测试数据')
+      
+      // 为缺失的字段提供默认值
+      const defaultCharacter = {
+        name: '小朋友',
+        age: 6,
+        identity: 'human',
+        description: '一个可爱的小朋友',
+        previewImage: character?.previewImage || null,
+        ...character
+      }
+      
+      const defaultStory = {
+        type: 'adventure',
+        pages: 6,
+        ...story
+      }
+      
+      const defaultContent = {
+        finalTopic: '成长与学习',
+        selectedTopic: '成长与学习',
+        creationMode: 'custom',
+        ...content
+      }
+      
+      console.log('✅ 使用默认数据:')
+      console.log('Default character:', defaultCharacter)
+      console.log('Default story:', defaultStory)
+      
+      setCharacterData(defaultCharacter)
+      setStoryData(defaultStory)
+      setContentData(defaultContent)
+    } else {
+      // 使用现有数据但确保有默认值
+      const safeCharacter = {
+        name: '小朋友',
+        age: 6,
+        identity: 'human',
+        ...character
+      }
+      
+      const safeStory = {
+        type: 'adventure',
+        pages: 6,
+        ...story
+      }
+      
+      console.log('✅ 数据验证通过，使用现有数据:')
+      console.log('Safe character:', safeCharacter)
+      console.log('Safe story:', safeStory)
+      
+      setCharacterData(safeCharacter)
+      setStoryData(safeStory)
+      setContentData(content)
     }
-    
-    // 为缺失的字段提供默认值
-    const safeCharacter = isTestPath ? {
-      name: '小明',
-      age: 7,
-      identity: 'human',
-      description: '一个活泼可爱的7岁小男孩，有着圆圆的脸蛋和明亮的眼睛',
-      previewImage: 'https://picsum.photos/300/400?random=1' // 测试用的占位图
-    } : {
-      name: '小朋友',
-      age: 6,
-      identity: 'human',
-      ...character
-    }
-    
-    const safeStory = isTestPath ? {
-      type: 'adventure',
-      pages: 6
-    } : {
-      type: 'adventure',
-      pages: 6,
-      ...story
-    }
-    
-    const safeContent = isTestPath ? {
-      finalTopic: '勇敢与探索',
-      selectedTopic: '勇敢与探索',
-      creationMode: 'custom'
-    } : content
-    
-    console.log('✅ 数据验证通过，使用安全数据:')
-    console.log('Safe character:', safeCharacter)
-    console.log('Safe story:', safeStory)
-    
-    setCharacterData(safeCharacter)
-    setStoryData(safeStory)
-    setContentData(safeContent)
     
     // 初始化4页内容
     const initialPages = []
@@ -363,7 +376,8 @@ ${followingContent ? `后续故事内容：\n${followingContent}` : ''}
     navigate('/content-setup')
   }
 
-  if (!characterData.name) {
+  // 如果数据还在初始化中，显示加载状态
+  if (!characterData.name && storyPages.length === 0) {
     return <div className="min-h-screen flex items-center justify-center">
       <Loader2 className="w-8 h-8 animate-spin" />
     </div>
