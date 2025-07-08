@@ -197,13 +197,12 @@ app.post('/api/liblib/img2img', async (req, res) => {
     const { signature, timestamp, signatureNonce } = generateSignature(uri);
     const url = `${LIBLIB_CONFIG.baseUrl}${uri}?AccessKey=${LIBLIB_CONFIG.accessKey}&Signature=${signature}&Timestamp=${timestamp}&SignatureNonce=${signatureNonce}`;
 
-    // 使用正确的LiblibAI Kontext服务图生图参数格式
+    // 使用正确的LiblibAI Kontext服务图生图参数格式（注意：图生图不需要model参数）
     const requestData = {
       templateUuid: LIBLIB_CONFIG.img2imgTemplateUuid,
       generateParams: {
-        model: options.model || "pro",
         prompt: prompt.substring(0, 2000),
-        aspectRatio: options.aspectRatio || "1:1",
+        aspectRatio: options.aspectRatio || "2:3",
         guidance_scale: options.guidance_scale || 3.5,
         imgCount: options.imgCount || 1,
         image_list: [imageUrl]
@@ -214,8 +213,9 @@ app.post('/api/liblib/img2img', async (req, res) => {
       url: `${LIBLIB_CONFIG.baseUrl}${uri}`,
       templateUuid: requestData.templateUuid,
       prompt: requestData.generateParams.prompt.substring(0, 100) + '...',
-      model: requestData.generateParams.model,
-      aspectRatio: requestData.generateParams.aspectRatio
+      aspectRatio: requestData.generateParams.aspectRatio,
+      guidance_scale: requestData.generateParams.guidance_scale,
+      imageCount: requestData.generateParams.imgCount
     });
 
     const fetch = (await import('node-fetch')).default;
