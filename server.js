@@ -31,23 +31,22 @@ app.use(cors({
 app.use(express.json());
 
 const LIBLIB_CONFIG = {
-  baseUrl: 'https://openapi.liblibai.cloud',
-  text2imgEndpoint: '/api/generate/webui/text2img/ultra',
-  img2imgEndpoint: '/api/generate/webui/img2img/ultra',
-  statusEndpoint: '/api/generate/query',
-  accessKey: process.env.VITE_LIBLIB_ACCESS_KEY,
-  secretKey: process.env.VITE_LIBLIB_SECRET_KEY,
-  // 星流Star-3 Alpha模板UUID（适用于文生图和图生图）
-  templateUuid: '5d7e67009b344550bc1aa6ccbfa1d7f4'
+  baseUrl: 'https://api.liblib.art',
+  text2imgEndpoint: '/v1/workflows/run',
+  img2imgEndpoint: '/v1/workflows/run',
+  queryEndpoint: '/v1/tasks',
+  // 使用Bearer Token认证，替换AccessKey/SecretKey
+  apiKey: process.env.VITE_LIBLIB_API_KEY || process.env.LIBLIB_API_KEY,
+  // 默认模型ID（基于Kontext）
+  defaultModelId: process.env.VITE_LIBLIB_MODEL_ID || 'your-custom-model-id'
 };
 
-function generateSignature(uri) {
-  const timestamp = Date.now();
-  const signatureNonce = randomString(16);
-  const str = `${uri}&${timestamp}&${signatureNonce}`;
-  const hash = hmacsha1(LIBLIB_CONFIG.secretKey, str);
-  const signature = hash.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-  return { signature, timestamp: timestamp.toString(), signatureNonce };
+// Kontext API使用Bearer Token认证，无需签名函数
+function buildKontextHeaders() {
+  return {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${LIBLIB_CONFIG.apiKey}`
+  };
 }
 
 // 所有你的 API 路由 ↓↓↓
@@ -92,10 +91,14 @@ app.get('/api/liblib/test-signature', (req, res) => {
 });
 
 app.get('/api/liblib/config', (req, res) => {
-  const isConfigured = !!(LIBLIB_CONFIG.accessKey && LIBLIB_CONFIG.secretKey);
+  const isConfigured = !!LIBLIB_CONFIG.apiKey;
   res.json({
     configured: isConfigured,
-    message: isConfigured ? 'LiblibAI配置正常' : 'LiblibAI配置缺失，请检查环境变量'
+    apiSystem: 'Kontext API',
+    baseUrl: LIBLIB_CONFIG.baseUrl,
+    hasApiKey: !!LIBLIB_CONFIG.apiKey,
+    hasModelId: !!LIBLIB_CONFIG.defaultModelId,
+    message: isConfigured ? 'LiblibAI Kontext API配置正常' : 'LiblibAI API密钥未配置，请设置VITE_LIBLIB_API_KEY环境变量'
   });
 });
 
@@ -103,32 +106,50 @@ app.post('/api/liblib/text2img', async (req, res) => {
   try {
     const { prompt, options = {} } = req.body;
     if (!prompt) return res.status(400).json({ error: '缺少prompt参数' });
-    if (!LIBLIB_CONFIG.accessKey || !LIBLIB_CONFIG.secretKey)
-      return res.status(500).json({ error: 'LiblibAI API配置不完整' });
-    const uri = LIBLIB_CONFIG.text2imgEndpoint;
-    const { signature, timestamp, signatureNonce } = generateSignature(uri);
-    const url = `${LIBLIB_CONFIG.baseUrl}${uri}?AccessKey=${LIBLIB_CONFIG.accessKey}&Signature=${signature}&Timestamp=${timestamp}&SignatureNonce=${signatureNonce}`;
+    if (!LIBLIB_CONFIG.apiKey)
+      return res.status(500).json({ error: 'LiblibAI API密钥未配置' });
+
+    const url = `${LIBLIB_CONFIG.baseUrl}${LIBLIB_CONFIG.text2imgEndpoint}`;
+    const headers = buildKontextHeaders();
+
+    // Kontext API参数结构
     const requestData = {
-      templateUuid: LIBLIB_CONFIG.templateUuid,
-      generateParams: {
-        prompt: prompt.substring(0, 2000),
-        // 移除model参数，星流API不需要这个参数
-        aspectRatio: options.aspectRatio || "3:4",
-        guidance_scale: options.guidance_scale || 3.5,
-        imgCount: options.imgCount || 1
-      }
+      prompt: prompt.substring(0, 2000),
+      model_id: options.model_id || LIBLIB_CONFIG.defaultModelId,
+      width: options.width || 768,
+      height: options.height || 1024,
+      steps: options.steps || 20,
+      cfg_scale: options.cfg_scale || 7.5,
+      sampler: options.sampler || 'DPM++ 2M Karras',
+      n_iter: options.n_iter || 1,
+      negative_prompt: options.negative_prompt || 'blurry, low quality, distorted'
     };
+
+    console.log('Kontext API - 文生图请求:', {
+      url,
+      prompt: requestData.prompt,
+      model_id: requestData.model_id
+    });
+
     const fetch = (await import('node-fetch')).default;
-    const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(requestData) });
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: headers,
+      body: JSON.stringify(requestData)
+    });
+
     const responseText = await response.text();
     let result;
-    try { result = JSON.parse(responseText);} catch (parseError) {
+    try {
+      result = JSON.parse(responseText);
+    } catch (parseError) {
       return res.status(500).json({
         error: 'API响应格式错误',
         details: responseText.substring(0, 500),
         status: response.status
       });
     }
+
     if (!response.ok) return res.status(response.status).json(result);
     res.json(result);
   } catch (error) {
@@ -141,29 +162,51 @@ app.post('/api/liblib/img2img', async (req, res) => {
     const { prompt, imageUrl, options = {} } = req.body;
     if (!prompt || !imageUrl)
       return res.status(400).json({ error: '缺少prompt或imageUrl参数' });
-    if (!LIBLIB_CONFIG.accessKey || !LIBLIB_CONFIG.secretKey)
-      return res.status(500).json({ error: 'LiblibAI API配置不完整' });
-    const uri = LIBLIB_CONFIG.img2imgEndpoint;
-    const { signature, timestamp, signatureNonce } = generateSignature(uri);
-    const url = `${LIBLIB_CONFIG.baseUrl}${uri}?AccessKey=${LIBLIB_CONFIG.accessKey}&Signature=${signature}&Timestamp=${timestamp}&SignatureNonce=${signatureNonce}`;
+    if (!LIBLIB_CONFIG.apiKey)
+      return res.status(500).json({ error: 'LiblibAI API密钥未配置' });
+
+    const url = `${LIBLIB_CONFIG.baseUrl}${LIBLIB_CONFIG.img2imgEndpoint}`;
+    const headers = buildKontextHeaders();
+
+    // Kontext API图生图参数结构
     const requestData = {
-      templateUuid: LIBLIB_CONFIG.templateUuid,
-      generateParams: {
-        prompt: prompt.substring(0, 2000),
-        // 移除model参数，星流API不需要这个参数
-        aspectRatio: options.aspectRatio || "1:1",
-        guidance_scale: options.guidance_scale || 3.5,
-        imgCount: options.imgCount || 1,
-        image_list: [imageUrl]
-      }
+      image: imageUrl, // 可以是URL或Base64编码
+      prompt: prompt.substring(0, 2000),
+      model_id: options.model_id || LIBLIB_CONFIG.defaultModelId,
+      strength: options.strength || 0.8, // 控制生成图像与原始图像的相似度
+      steps: options.steps || 20,
+      cfg_scale: options.cfg_scale || 7.5,
+      sampler: options.sampler || 'DPM++ 2M Karras',
+      n_iter: options.n_iter || 1,
+      negative_prompt: options.negative_prompt || 'blurry, low quality, distorted'
     };
+
+    console.log('Kontext API - 图生图请求:', {
+      url,
+      prompt: requestData.prompt,
+      model_id: requestData.model_id,
+      strength: requestData.strength
+    });
+
     const fetch = (await import('node-fetch')).default;
-    const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(requestData) });
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: headers,
+      body: JSON.stringify(requestData)
+    });
+
     const responseText = await response.text();
     let result;
-    try { result = JSON.parse(responseText);} catch (parseError) {
-      return res.status(500).json({ error: 'API响应格式错误', details: responseText.substring(0, 500), status: response.status });
+    try {
+      result = JSON.parse(responseText);
+    } catch (parseError) {
+      return res.status(500).json({
+        error: 'API响应格式错误',
+        details: responseText.substring(0, 500),
+        status: response.status
+      });
     }
+
     if (!response.ok) return res.status(response.status).json(result);
     res.json(result);
   } catch (error) {
@@ -171,32 +214,36 @@ app.post('/api/liblib/img2img', async (req, res) => {
   }
 });
 
-app.post('/api/liblib/query/:generateUuid', async (req, res) => {
+app.post('/api/liblib/query/:taskId', async (req, res) => {
   try {
-    const { generateUuid } = req.params;
-    if (!generateUuid) return res.status(400).json({ error: '缺少generateUuid参数' });
-    if (!LIBLIB_CONFIG.accessKey || !LIBLIB_CONFIG.secretKey)
-      return res.status(500).json({ error: 'LiblibAI API配置不完整' });
-    
-    // 根据指南文档，查询接口是GET请求，generateUuid作为查询参数
-    const uri = LIBLIB_CONFIG.statusEndpoint;
-    const { signature, timestamp, signatureNonce } = generateSignature(uri);
-    const url = `${LIBLIB_CONFIG.baseUrl}${uri}?generateUuid=${generateUuid}&AccessKey=${LIBLIB_CONFIG.accessKey}&Signature=${signature}&Timestamp=${timestamp}&SignatureNonce=${signatureNonce}`;
-    
+    const { taskId } = req.params;
+    if (!taskId) return res.status(400).json({ error: '缺少taskId参数' });
+    if (!LIBLIB_CONFIG.apiKey)
+      return res.status(500).json({ error: 'LiblibAI API密钥未配置' });
+
+    // Kontext API查询接口格式：GET /v1/tasks/{task_id}
+    const url = `${LIBLIB_CONFIG.baseUrl}${LIBLIB_CONFIG.queryEndpoint}/${taskId}`;
+    const headers = buildKontextHeaders();
+
+    console.log('Kontext API - 查询任务:', { url, taskId });
+
     const fetch = (await import('node-fetch')).default;
-    const response = await fetch(url, { 
-      method: 'GET',  // 改为GET请求
-      headers: { 'Content-Type': 'application/json' }
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: headers
     });
-    
+
     const responseText = await response.text();
     let result;
-    try { 
+    try {
       result = JSON.parse(responseText);
     } catch (parseError) {
-      return res.status(500).json({ error: '查询响应格式错误', details: responseText.substring(0, 500) });
+      return res.status(500).json({
+        error: '查询响应格式错误',
+        details: responseText.substring(0, 500)
+      });
     }
-    
+
     if (!response.ok) return res.status(response.status).json(result);
     res.json(result);
   } catch (error) {
@@ -411,7 +458,7 @@ app.post('/api/qwen/chat', async (req, res) => {
 app.get('/api/status', (req, res) => {
   const hasPrimaryKey = !!process.env.VITE_OPENAI_API_KEY;
   const hasSecondaryKey = !!process.env.OPENAI_API_KEY2;
-  const hasLiblibConfig = !!(LIBLIB_CONFIG.accessKey && LIBLIB_CONFIG.secretKey);
+  const hasLiblibConfig = !!LIBLIB_CONFIG.apiKey;
   const hasQwenKey = !!(process.env.DASHSCOPE_API_KEY || process.env.VITE_QWEN_API_KEY);
   
   // 双账户配置状态
@@ -463,15 +510,21 @@ app.get('/api/status', (req, res) => {
       },
       liblib: {
         configured: hasLiblibConfig,
-        message: hasLiblibConfig ? 'LiblibAI API已配置' : 'LiblibAI API密钥未配置'
+        apiSystem: 'Kontext API',
+        baseUrl: LIBLIB_CONFIG.baseUrl,
+        hasApiKey: !!LIBLIB_CONFIG.apiKey,
+        hasModelId: !!LIBLIB_CONFIG.defaultModelId,
+        env: 'VITE_LIBLIB_API_KEY 或 LIBLIB_API_KEY',
+        message: hasLiblibConfig ? 'LiblibAI Kontext API已配置' : 'LiblibAI API密钥未配置'
       }
     },
     endpoints: [
       'POST /api/openai/chat - 双账户OpenAI聊天API',
       'POST /api/openai/images - DALL-E图像生成',
       'POST /api/qwen/chat - 通义千问聊天API',
-      'POST /api/liblib/text2img - LiblibAI文生图',
-      'POST /api/liblib/img2img - LiblibAI图生图',
+      'POST /api/liblib/text2img - LiblibAI Kontext文生图',
+      'POST /api/liblib/img2img - LiblibAI Kontext图生图',
+      'POST /api/liblib/query/:taskId - LiblibAI Kontext查询结果',
       'GET /api/status - 服务状态检查'
     ]
   });

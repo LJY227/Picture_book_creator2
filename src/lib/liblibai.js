@@ -1,16 +1,18 @@
 /**
- * LiblibAI x 星流图像大模型API集成模块
+ * LiblibAI Kontext自定义模型API集成模块
  * 支持文生图(text2image)和图生图(image2image)功能
+ * 基于F.1 Kontext算法
  *
- * API文档: https://openapi.liblibai.cloud
+ * API文档: https://api.liblib.art
+ * 认证方式: Bearer Token
  */
 
-// LiblibAI API配置 - 使用相对路径
+// LiblibAI Kontext API配置 - 使用相对路径
 const LIBLIB_CONFIG = {
   baseUrl: import.meta.env.VITE_API_BASE_URL || '/api', // 使用相对路径
   text2imgEndpoint: '/liblib/text2img',
   img2imgEndpoint: '/liblib/img2img',
-  queryEndpoint: '/liblib/query',
+  queryEndpoint: '/liblib/query', // 注意：这里的路径会在具体调用时加上taskId
   configEndpoint: '/liblib/config'
 };
 
@@ -122,7 +124,7 @@ export async function generateImageToImage(prompt, imageUrl, options = {}) {
 
 /**
  * 查询生成结果
- * @param {string} taskId - 生成任务的ID (generateUuid)
+ * @param {string} taskId - 生成任务的ID (Kontext API taskId)
  * @returns {Promise<Object>} 包含生成状态和结果的对象
  */
 export async function queryGenerationResult(taskId) {
@@ -131,28 +133,30 @@ export async function queryGenerationResult(taskId) {
       throw new Error('taskId参数不能为空');
     }
 
-    // 使用POST请求查询状态，URL路径包含generateUuid
+    // Kontext API查询格式：POST /api/liblib/query/{taskId}
     const url = `${LIBLIB_CONFIG.baseUrl}${LIBLIB_CONFIG.queryEndpoint}/${taskId}`;
     const headers = buildHeaders();
+
+    console.log('LiblibAI - Kontext API查询请求:', url);
 
     const response = await fetch(url, {
       method: 'POST',
       headers: headers,
-      body: JSON.stringify({}) // 空的请求体，因为generateUuid在URL中
+      body: JSON.stringify({}) // 空的请求体，taskId在URL路径中
     });
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-      throw new Error(`LiblibAI查询代理请求失败: ${response.status} ${response.statusText} - ${errorData.error}`);
+      throw new Error(`LiblibAI Kontext查询请求失败: ${response.status} ${response.statusText} - ${errorData.error}`);
     }
 
     const result = await response.json();
-    console.log('LiblibAI - 查询结果:', result);
+    console.log('LiblibAI - Kontext查询结果:', result);
 
     return result;
 
   } catch (error) {
-    console.error('LiblibAI - 查询结果失败:', error);
+    console.error('LiblibAI - Kontext查询失败:', error);
     throw error;
   }
 }
@@ -279,27 +283,26 @@ export async function generateTextToImageComplete(prompt, onProgress = null, opt
       if (onProgress) onProgress(`正在发起图像生成请求...（尝试 ${attempt}/${maxRetries}）`, 10);
       const generateResponse = await generateTextToImage(safePrompt, options);
 
-      // 根据LiblibAI API响应格式提取generateUuid
-      console.log('LiblibAI - 文生图响应完整结构:', JSON.stringify(generateResponse, null, 2));
+      // 根据Kontext API响应格式提取taskId
+      console.log('LiblibAI - Kontext文生图响应完整结构:', JSON.stringify(generateResponse, null, 2));
       
-      const taskId = generateResponse.data?.generateUuid || 
-                     generateResponse.data?.taskId ||
-                     generateResponse.data?.task_id ||
-                     generateResponse.generateUuid || 
-                     generateResponse.taskId ||
-                     generateResponse.task_id || 
+      // Kontext API返回格式通常包含task_id字段
+      const taskId = generateResponse.task_id || 
                      generateResponse.id ||
-                     generateResponse.uuid;
+                     generateResponse.taskId ||
+                     generateResponse.data?.task_id ||
+                     generateResponse.data?.id ||
+                     generateResponse.uuid ||
+                     generateResponse.generateUuid; // 保留作为备用
 
-      console.log('LiblibAI - 尝试提取的任务ID:', {
-        'data.generateUuid': generateResponse.data?.generateUuid,
-        'data.taskId': generateResponse.data?.taskId,
-        'data.task_id': generateResponse.data?.task_id,
-        'generateUuid': generateResponse.generateUuid,
-        'taskId': generateResponse.taskId,
+      console.log('LiblibAI - Kontext尝试提取的任务ID:', {
         'task_id': generateResponse.task_id,
         'id': generateResponse.id,
+        'taskId': generateResponse.taskId,
+        'data.task_id': generateResponse.data?.task_id,
+        'data.id': generateResponse.data?.id,
         'uuid': generateResponse.uuid,
+        'generateUuid': generateResponse.generateUuid,
         'finalTaskId': taskId
       });
 
@@ -397,27 +400,26 @@ export async function generateImageToImageComplete(prompt, referenceImageUrl, on
       if (onProgress) onProgress(`正在发起图生图请求...（尝试 ${attempt}/${maxRetries}）`, 10);
       const generateResponse = await generateImageToImage(safePrompt, referenceImageUrl, options);
 
-      // 根据LiblibAI API响应格式提取generateUuid
-      console.log('LiblibAI - 图生图响应完整结构:', JSON.stringify(generateResponse, null, 2));
+      // 根据Kontext API响应格式提取taskId
+      console.log('LiblibAI - Kontext图生图响应完整结构:', JSON.stringify(generateResponse, null, 2));
       
-      const taskId = generateResponse.data?.generateUuid || 
-                     generateResponse.data?.taskId ||
-                     generateResponse.data?.task_id ||
-                     generateResponse.generateUuid || 
-                     generateResponse.taskId ||
-                     generateResponse.task_id || 
+      // Kontext API返回格式通常包含task_id字段
+      const taskId = generateResponse.task_id || 
                      generateResponse.id ||
-                     generateResponse.uuid;
+                     generateResponse.taskId ||
+                     generateResponse.data?.task_id ||
+                     generateResponse.data?.id ||
+                     generateResponse.uuid ||
+                     generateResponse.generateUuid; // 保留作为备用
 
-      console.log('LiblibAI - 尝试提取的任务ID:', {
-        'data.generateUuid': generateResponse.data?.generateUuid,
-        'data.taskId': generateResponse.data?.taskId,
-        'data.task_id': generateResponse.data?.task_id,
-        'generateUuid': generateResponse.generateUuid,
-        'taskId': generateResponse.taskId,
+      console.log('LiblibAI - Kontext尝试提取的任务ID:', {
         'task_id': generateResponse.task_id,
         'id': generateResponse.id,
+        'taskId': generateResponse.taskId,
+        'data.task_id': generateResponse.data?.task_id,
+        'data.id': generateResponse.data?.id,
         'uuid': generateResponse.uuid,
+        'generateUuid': generateResponse.generateUuid,
         'finalTaskId': taskId
       });
 
