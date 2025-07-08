@@ -34,7 +34,7 @@ const ACTION_CLARITY_KEYWORDS = [
 /**
  * 艺术风格参考
  */
-const ART_STYLE_REFERENCE = "In the style of Flavia Sorrentino, with lively ink outlines and soft watercolor fills. Gentle, expressive, and emotionally warm.";
+const ART_STYLE_REFERENCE = "watercolor illustration style, soft colors, gentle brushstrokes, artistic, painted texture";
 
 /**
  * 标准化角色描述模板

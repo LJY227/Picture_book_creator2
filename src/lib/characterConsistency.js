@@ -54,20 +54,17 @@ export const CHARACTER_DEFINITIONS = {
     boy: {
       name: '小明',
       description: 'a 6-year-old child with friendly appearance, wearing a simple t-shirt, jeans, and comfortable shoes',
-      chineseDescription: '一个6岁的小男孩，友善的外表，穿着简单的T恤、牛仔裤和舒适的鞋子',
-      visualStyle: 'children\'s storybook illustration by Flavia Sorrentino, cute cartoon style, simple 2D art, bright colors, child-friendly, educational, wholesome, appropriate for children aged 3-7, clean background'
+      chineseDescription: '一个6岁的小男孩，友善的外表，穿着简单的T恤、牛仔裤和舒适的鞋子'
     },
     girl: {
       name: '小红',
       description: 'a 6-year-old girl with friendly appearance, wearing a simple dress or t-shirt, comfortable shoes, and a warm smile',
-      chineseDescription: '一个6岁的小女孩，友善的外表，穿着简单的连衣裙或T恤、舒适的鞋子，温暖的笑容',
-      visualStyle: 'children\'s storybook illustration by Flavia Sorrentino, cute cartoon style, simple 2D art, bright colors, child-friendly, educational, wholesome, appropriate for children aged 3-7, clean background'
+      chineseDescription: '一个6岁的小女孩，友善的外表，穿着简单的连衣裙或T恤、舒适的鞋子，温暖的笑容'
     },
     child: {
       name: '小朋友',
       description: 'a 6-year-old child with friendly appearance, wearing a simple t-shirt, jeans, and comfortable shoes',
-      chineseDescription: '一个6岁的小朋友，友善的外表，穿着简单的T恤、牛仔裤和舒适的鞋子',
-      visualStyle: 'children\'s storybook illustration by Flavia Sorrentino, cute cartoon style, simple 2D art, bright colors, child-friendly, educational, wholesome, appropriate for children aged 3-7, clean background'
+      chineseDescription: '一个6岁的小朋友，友善的外表，穿着简单的T恤、牛仔裤和舒适的鞋子'
     }
   },
   
@@ -76,20 +73,17 @@ export const CHARACTER_DEFINITIONS = {
     bear: {
       name: '小熊毛毛',
       description: 'a cute cartoon bear wearing a red t-shirt, simple 2D style, children\'s book illustration',
-      chineseDescription: '一只可爱的卡通小熊，穿着红色T恤，简单的2D风格，儿童绘本插画',
-      visualStyle: 'children\'s storybook illustration by Flavia Sorrentino, cute cartoon style, simple 2D art, bright colors, child-friendly, educational, wholesome, appropriate for children aged 3-7, clean background'
+      chineseDescription: '一只可爱的卡通小熊，穿着红色T恤，简单的2D风格，儿童绘本插画'
     },
     rabbit: {
       name: '小兔白白',
       description: 'a cute cartoon rabbit with white fur, wearing a pink dress, simple 2D style, children\'s book illustration',
-      chineseDescription: '一只可爱的卡通小兔子，白色毛发，穿着粉色连衣裙，简单的2D风格，儿童绘本插画',
-      visualStyle: 'children\'s storybook illustration by Flavia Sorrentino, cute cartoon style, simple 2D art, bright colors, child-friendly, educational, wholesome, appropriate for children aged 3-7, clean background'
+      chineseDescription: '一只可爱的卡通小兔子，白色毛发，穿着粉色连衣裙，简单的2D风格，儿童绘本插画'
     },
     cat: {
       name: '小猫咪咪',
       description: 'a cute cartoon cat with orange fur, wearing a green vest, simple 2D style, children\'s book illustration',
-      chineseDescription: '一只可爱的卡通小猫，橙色毛发，穿着绿色马甲，简单的2D风格，儿童绘本插画',
-      visualStyle: 'children\'s storybook illustration by Flavia Sorrentino, cute cartoon style, simple 2D art, bright colors, child-friendly, educational, wholesome, appropriate for children aged 3-7, clean background'
+      chineseDescription: '一只可爱的卡通小猫，橙色毛发，穿着绿色马甲，简单的2D风格，儿童绘本插画'
     }
   }
 };
@@ -128,8 +122,7 @@ Format the response as a JSON object with these fields:
 {
   "name": "human character name",
   "description": "detailed English description of a HUMAN child",
-  "chineseDescription": "Chinese translation",
-  "visualStyle": "children's storybook illustration by Flavia Sorrentino, cute cartoon style, simple 2D art, bright colors, child-friendly, educational, wholesome, appropriate for children aged 3-7, clean background"
+  "chineseDescription": "Chinese translation"
 }`
   },
   animal: {
@@ -153,8 +146,7 @@ Format the response as a JSON object with these fields:
 {
   "name": "animal character name",
   "description": "detailed English description of an ANIMAL character",
-  "chineseDescription": "Chinese translation", 
-  "visualStyle": "children's storybook illustration by Flavia Sorrentino, cute cartoon style, simple 2D art, bright colors, child-friendly, educational, wholesome, appropriate for children aged 3-7, clean background"
+  "chineseDescription": "Chinese translation"
 }`
   }
 };
@@ -329,8 +321,8 @@ async function generateMasterCharacterImageFallback(character, onProgress = null
  * @param {Object} characterDef - 标准化角色定义
  * @returns {string} 主角生成提示词
  */
-function buildMasterCharacterPrompt(characterDef) {
-  return `Safe, family-friendly, children's book style, ${characterDef.description}, ${characterDef.visualStyle}, appropriate for children, wholesome, innocent, educational, character reference sheet, front view, clear details`;
+function buildMasterCharacterPrompt(characterDef, artStyle = 'watercolor illustration style, soft colors, gentle brushstrokes, artistic, painted texture') {
+  return `Safe, family-friendly, children's book style, ${characterDef.description}, ${artStyle}, white background, appropriate for children, wholesome, innocent, educational, character reference sheet, front view, clear details`;
 }
 
 /**
@@ -572,7 +564,7 @@ function getCharacterType(characterDef) {
  * @param {Object} characterDef - 角色定义
  * @returns {string} 插画生成提示词
  */
-function buildIllustrationPrompt(sceneDescription, characterDef, secondaryCharacters = null) {
+function buildIllustrationPrompt(sceneDescription, characterDef, secondaryCharacters = null, artStyle = 'watercolor illustration style, soft colors, gentle brushstrokes, artistic, painted texture') {
   // 识别其他角色，传入角色定义避免重复添加相同类型的角色
   const otherCharactersDesc = identifyOtherCharacters(sceneDescription, characterDef, secondaryCharacters);
   
@@ -586,7 +578,7 @@ function buildIllustrationPrompt(sceneDescription, characterDef, secondaryCharac
   console.log('🎨 主角类型:', getCharacterType(characterDef));
   console.log('🎨 其他角色描述:', otherCharactersDesc);
   
-  return `Safe, family-friendly, children's book style, ${simplifiedCharacterDesc}${otherCharactersDesc}, ${sceneDescription}, ${characterDef.visualStyle}, appropriate for children, wholesome, innocent, educational`;
+  return `Safe, family-friendly, children's book style, ${simplifiedCharacterDesc}${otherCharactersDesc}, ${sceneDescription}, ${artStyle}, white background, appropriate for children, wholesome, innocent, educational`;
 }
 
 /**
@@ -723,7 +715,6 @@ async function generateCustomCharacterDefinition(character) {
       description: englishDescription, // 用于图像生成的英文描述
       displayDescription: optimizedDescription, // 用于界面显示的用户语言描述
       chineseDescription: customDescription, // 保留原始描述
-      visualStyle: "children's storybook illustration by Flavia Sorrentino, cute cartoon style, simple 2D art, bright colors, child-friendly, educational, wholesome, appropriate for children aged 3-7, clean background",
       age: age || 6,
       isCustomGenerated: true,
       originalInput: customDescription,

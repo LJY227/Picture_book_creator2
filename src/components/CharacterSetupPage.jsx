@@ -5,17 +5,46 @@ import { Label } from '@/components/ui/label.jsx'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group.jsx'
 import { Textarea } from '@/components/ui/textarea.jsx'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card.jsx'
-import { ArrowLeft, ArrowRight, User, Sparkles, Loader2, Eye, RefreshCw, Image } from 'lucide-react'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select.jsx'
+import { ArrowLeft, ArrowRight, User, Sparkles, Loader2, Eye, RefreshCw, Image, Palette } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useLanguage } from '../contexts/LanguageContext.jsx'
 import { CHARACTER_STRATEGY } from '@/lib/characterConsistency.js'
 import { callQwenChat } from '@/lib/qwen.js'
 import { generateTextToImageComplete } from '@/lib/liblibai.js'
 
-// 预设角色关键词
+// 预设角色关键词（移除风格和场景描述）
 const PRESET_KEYWORDS = {
-  human: "20-25岁的亚洲女性，拥有苗条中等身材，黑色长直发，大而明亮的深棕色眼睛，小巧挺拔的鼻子和樱桃小嘴，皮肤白皙细腻，表情温柔自信。她的着装风格为时尚休闲，包括白色宽松T恤、浅蓝色高腰牛仔裤和白色运动鞋，并搭配银色项链、耳钉和黑色双肩包。姿态自然，眼神专注，置身于柔和光线下的城市街头，整体呈现出超写实主义的电影感，充满积极、乐观和时尚的氛围。",
-  animal: "一只幼年雄性柴犬，体型小巧毛茸茸，毛色为棕黄色，腹部和胸部为白色。它拥有一双圆而黑亮的眼睛，黑色湿润的小鼻子，微张的嘴巴露出粉色舌头，以及直立的三角形耳朵，表情活泼天真。身体特征包括卷曲蓬松的尾巴和粉嫩的小爪子。它坐立在阳光明媚的草地上，歪头专注，整体风格为卡通化，线条流畅，色彩鲜明，营造出宁静、温馨、快乐和治愈的氛围。"
+  human: "20-25岁的亚洲女性，拥有苗条中等身材，黑色长直发，大而明亮的深棕色眼睛，小巧挺拔的鼻子和樱桃小嘴，皮肤白皙细腻，表情温柔自信。她的着装风格为时尚休闲，包括白色宽松T恤、浅蓝色高腰牛仔裤和白色运动鞋，并搭配银色项链、耳钉和黑色双肩包。姿态自然，眼神专注，充满积极、乐观的氛围。",
+  animal: "一只幼年雄性柴犬，体型小巧毛茸茸，毛色为棕黄色，腹部和胸部为白色。它拥有一双圆而黑亮的眼睛，黑色湿润的小鼻子，微张的嘴巴露出粉色舌头，以及直立的三角形耳朵，表情活泼天真。身体特征包括卷曲蓬松的尾巴和粉嫩的小爪子。它坐立着，歪头专注，营造出宁静、温馨、快乐和治愈的氛围。"
+}
+
+// 风格选项
+const STYLE_OPTIONS = {
+  watercolor: {
+    name: "水彩插画风格",
+    keywords: "watercolor illustration style, soft colors, gentle brushstrokes, artistic, painted texture"
+  },
+  papercut: {
+    name: "剪纸拼贴风格", 
+    keywords: "paper cut collage style, layered paper art, geometric shapes, textured paper, craft style"
+  },
+  cartoon: {
+    name: "卡通涂鸦风格",
+    keywords: "cartoon doodle style, playful lines, bright colors, hand-drawn, whimsical, fun"
+  },
+  vintage: {
+    name: "复古手绘风格",
+    keywords: "vintage hand-drawn style, classic illustration, retro colors, traditional art, nostalgic"
+  },
+  minimal: {
+    name: "极简主义风格",
+    keywords: "minimalist style, clean lines, simple shapes, modern, geometric, elegant"
+  },
+  custom: {
+    name: "自定义风格",
+    keywords: ""
+  }
 }
 
 export default function CharacterSetupPage() {
@@ -26,6 +55,8 @@ export default function CharacterSetupPage() {
     age: 6,
     identity: 'human',
     customIdentity: '', // 自定义身份
+    style: 'watercolor', // 默认水彩风格
+    customStyle: '', // 自定义风格
     description: PRESET_KEYWORDS.human, // 使用description替代复杂的参数
     strategy: CHARACTER_STRATEGY.HYBRID
   })
@@ -53,11 +84,12 @@ export default function CharacterSetupPage() {
       finalIdentity = characterData.customIdentity
     }
     
-    // 构建最终数据
+    // 构建最终数据，包含风格信息
     const finalData = {
       ...characterData,
       identity: finalIdentity,
       customDescription: characterData.description,
+      artStyle: characterData.style === 'custom' ? characterData.customStyle : STYLE_OPTIONS[characterData.style]?.keywords || '',
       strategy: CHARACTER_STRATEGY.HYBRID
     }
     
@@ -76,12 +108,14 @@ export default function CharacterSetupPage() {
 
 要求：
 1. 生成一段完整的、适合图像生成的关键词描述
-2. 包含外貌特征、服装风格、表情姿态、环境场景、艺术风格等
+2. 包含外貌特征、服装风格、表情姿态等
 3. 确保内容积极正面，适合儿童绘本
 4. 风格要生动有趣，富有想象力
-5. 直接返回关键词描述，不需要分类标题
+5. 不要包含场景描述（如背景、环境等），统一使用白底
+6. 不要包含艺术风格描述（如水彩、卡通等），这将单独处理
+7. 直接返回关键词描述，不需要分类标题
 
-示例格式：一个/一只...的${customIdentity}，拥有...特征，穿着...，表情...，置身于...环境中，整体呈现...风格。
+示例格式：一个/一只...的${customIdentity}，拥有...特征，穿着...，表情...，充满...氛围。
 
 请直接生成关键词描述：`
 
@@ -90,11 +124,17 @@ export default function CharacterSetupPage() {
         temperature: 0.8
       }, 'CHARACTER_GENERATION')
 
+      console.log('通义千问返回结果:', result)
+
       if (result?.content) {
         setCharacterData(prev => ({ 
           ...prev, 
           description: result.content.trim()
         }))
+        console.log('已更新角色描述:', result.content.trim())
+      } else {
+        console.error('通义千问未返回有效内容:', result)
+        alert('生成失败，请检查API配置')
       }
     } catch (error) {
       console.error('生成角色描述失败:', error)
@@ -113,20 +153,34 @@ export default function CharacterSetupPage() {
 
     setIsGeneratingPreview(true)
     try {
-      // 构建适合LiblibAI的英文提示词
-      let prompt = `children's book character, ${characterData.description}, cartoon style, friendly, suitable for kids, high quality, detailed`
+      // 获取当前选择的风格
+      const currentStyle = characterData.style === 'custom' ? characterData.customStyle : STYLE_OPTIONS[characterData.style]?.keywords || ''
+      
+      // 构建适合LiblibAI的英文提示词，包含风格
+      let prompt = `children's book character, ${characterData.description}, ${currentStyle}, white background, friendly, suitable for kids, high quality, detailed`
       
       // 如果有自定义身份，加入到提示词中
       if (characterData.customIdentity) {
         prompt = `${characterData.customIdentity} character, ${prompt}`
       }
 
+      console.log('生成预览的提示词:', prompt)
+
       const result = await generateTextToImageComplete(prompt, (progress) => {
         console.log('预览生成进度:', progress)
       })
 
-      if (result?.data?.imgUrl) {
-        setPreviewImage(result.data.imgUrl)
+      console.log('LiblibAI返回结果:', result)
+
+      // 修复：正确从result中提取图片URL
+      const imageUrl = result?.imageUrl || result?.data?.imgUrl || result?.data?.images?.[0]?.imageUrl || null
+
+      if (imageUrl) {
+        setPreviewImage(imageUrl)
+        console.log('成功设置预览图片:', imageUrl)
+      } else {
+        console.error('未找到有效的图片URL:', result)
+        alert('预览生成完成，但未获取到图片链接')
       }
     } catch (error) {
       console.error('生成预览失败:', error)
@@ -146,6 +200,18 @@ export default function CharacterSetupPage() {
     }))
     
     // 清除预览图片
+    setPreviewImage(null)
+  }
+
+  // 处理风格选择变化
+  const handleStyleChange = (value) => {
+    setCharacterData(prev => ({ 
+      ...prev, 
+      style: value,
+      customStyle: value === 'custom' ? prev.customStyle : ''
+    }))
+    
+    // 清除预览图片，因为风格变化需要重新生成
     setPreviewImage(null)
   }
 
@@ -267,6 +333,43 @@ export default function CharacterSetupPage() {
             </div>
           )}
 
+          {/* 风格选择 */}
+          <div className="space-y-4">
+            <Label className="text-base font-medium text-gray-700 flex items-center gap-2">
+              <Palette className="w-4 h-4" />
+              绘画风格
+            </Label>
+            <Select value={characterData.style} onValueChange={handleStyleChange}>
+              <SelectTrigger className="text-base py-3 rounded-xl border-gray-200 focus:border-blue-500">
+                <SelectValue placeholder="选择绘画风格" />
+              </SelectTrigger>
+              <SelectContent>
+                {Object.entries(STYLE_OPTIONS).map(([key, style]) => (
+                  <SelectItem key={key} value={key}>
+                    {style.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* 自定义风格输入 */}
+          {characterData.style === 'custom' && (
+            <div className="space-y-3">
+              <Label htmlFor="customStyle" className="text-base font-medium text-gray-700">
+                自定义风格描述
+              </Label>
+              <Input
+                id="customStyle"
+                type="text"
+                placeholder="请输入自定义的绘画风格描述（英文）"
+                value={characterData.customStyle}
+                onChange={(e) => setCharacterData(prev => ({ ...prev, customStyle: e.target.value }))}
+                className="text-base py-3 rounded-xl border-gray-200 focus:border-blue-500"
+              />
+            </div>
+          )}
+
           {/* 角色描述显示区域 */}
           <div className="space-y-4">
             <div className="flex items-center justify-between">
@@ -296,6 +399,13 @@ export default function CharacterSetupPage() {
               className="min-h-[120px] text-base rounded-xl border-gray-200 focus:border-blue-500"
               placeholder="角色形象描述将在这里显示..."
             />
+            
+            {/* 风格提示 */}
+            {characterData.style !== 'custom' && (
+              <p className="text-sm text-gray-500">
+                当前风格：{STYLE_OPTIONS[characterData.style]?.name} - {STYLE_OPTIONS[characterData.style]?.keywords}
+              </p>
+            )}
           </div>
 
           {/* 预览图片显示 */}

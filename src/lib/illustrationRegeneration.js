@@ -959,7 +959,7 @@ function buildIllustrationPrompt(pageData, characterData, useMinimalCharacterDes
   console.log('角色描述模式:', useMinimalCharacterDescription ? '简化模式' : '完整模式');
   
   // 确保提示词完全是英文，避免图片中出现文字，强化无文字指令
-  return `Children's book illustration, ${characterDescription} ${sceneDescription}, cute cartoon style, simple 2D art, bright colors, child-friendly, educational, wholesome, appropriate for children aged 3-7, clean background, storybook style by Flavia Sorrentino, NO TEXT, NO WORDS, NO LETTERS, NO CHINESE CHARACTERS, NO WRITING, illustration only, pure visual storytelling, text-free artwork`;
+  return `Children's book illustration, ${characterDescription} ${sceneDescription}, watercolor illustration style, soft colors, gentle brushstrokes, artistic, painted texture, child-friendly, educational, wholesome, appropriate for children aged 3-7, white background, NO TEXT, NO WORDS, NO LETTERS, NO CHINESE CHARACTERS, NO WRITING, illustration only, pure visual storytelling, text-free artwork`;
 }
 
 /**
