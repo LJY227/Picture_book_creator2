@@ -111,12 +111,93 @@ app.get('/api/liblib/config', (req, res) => {
       img2img: LIBLIB_CONFIG.img2imgEndpoint,
       status: LIBLIB_CONFIG.statusEndpoint
     },
+    templateUuids: {
+      text2img: LIBLIB_CONFIG.text2imgTemplateUuid,
+      img2img: LIBLIB_CONFIG.img2imgTemplateUuid
+    },
     hasAccessKey: !!LIBLIB_CONFIG.accessKey,
     hasSecretKey: !!LIBLIB_CONFIG.secretKey,
     hasText2imgTemplateUuid: !!LIBLIB_CONFIG.text2imgTemplateUuid,
     hasImg2imgTemplateUuid: !!LIBLIB_CONFIG.img2imgTemplateUuid,
     message: isConfigured ? 'LiblibAI Kontext服务配置正常' : 'LiblibAI配置缺失，请检查VITE_LIBLIB_ACCESS_KEY和VITE_LIBLIB_SECRET_KEY环境变量'
   });
+});
+
+// 图生图测试端点
+app.post('/api/liblib/img2img-test', async (req, res) => {
+  try {
+    console.log('🧪 图生图测试端点调用');
+    
+    if (!LIBLIB_CONFIG.accessKey || !LIBLIB_CONFIG.secretKey) {
+      return res.status(500).json({ error: 'LiblibAI API配置不完整' });
+    }
+
+    const uri = LIBLIB_CONFIG.img2imgEndpoint;
+    const { signature, timestamp, signatureNonce } = generateSignature(uri);
+    const url = `${LIBLIB_CONFIG.baseUrl}${uri}?AccessKey=${LIBLIB_CONFIG.accessKey}&Signature=${signature}&Timestamp=${timestamp}&SignatureNonce=${signatureNonce}`;
+
+    // 使用官方示例的测试数据
+    const requestData = {
+      templateUuid: LIBLIB_CONFIG.img2imgTemplateUuid,
+      generateParams: {
+        prompt: "Turn this image into a Ghibli-style, a traditional Japanese anime aesthetics.",
+        aspectRatio: "2:3",
+        guidance_scale: 3.5,
+        imgCount: 1,
+        image_list: [
+          "https://liblibai-online.liblib.cloud/img/081e9f07d9bd4c2ba090efde163518f9/10d686ff178fb603bec49e84eed8a5d95c20d969cf3ea4abb83d11caff80fd34.jpg"
+        ]
+      }
+    };
+
+    console.log('🧪 测试请求数据:', JSON.stringify(requestData, null, 2));
+
+    const fetch = (await import('node-fetch')).default;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(requestData)
+    });
+
+    const responseText = await response.text();
+    console.log('🧪 原始响应文本:', responseText);
+    
+    let result;
+    try {
+      result = JSON.parse(responseText);
+    } catch (parseError) {
+      console.error('🧪 响应解析失败:', parseError);
+      return res.status(500).json({
+        error: 'API响应格式错误',
+        details: responseText.substring(0, 500),
+        status: response.status
+      });
+    }
+
+    console.log('🧪 解析后的响应:', JSON.stringify(result, null, 2));
+
+    if (!response.ok) {
+      console.error('🧪 API请求失败:', response.status, result);
+      return res.status(response.status).json(result);
+    }
+
+    res.json({
+      testSuccess: true,
+      apiResponse: result,
+      extractedGenerateUuid: result?.data?.generateUuid,
+      responseStructure: {
+        hasCode: 'code' in result,
+        hasData: 'data' in result,
+        hasGenerateUuid: result?.data && 'generateUuid' in result.data,
+        codeValue: result.code,
+        dataType: typeof result.data
+      }
+    });
+
+  } catch (error) {
+    console.error('🧪 测试端点异常:', error);
+    res.status(500).json({ error: error.message, stack: error.stack });
+  }
 });
 
 // LiblibAI Kontext服务 - 文生图
@@ -187,6 +268,12 @@ app.post('/api/liblib/text2img', async (req, res) => {
 // LiblibAI Kontext服务 - 图生图
 app.post('/api/liblib/img2img', async (req, res) => {
   try {
+    console.log('🖼️ 图生图请求开始 - 接收参数:', { 
+      hasPrompt: !!req.body.prompt, 
+      hasImageUrl: !!req.body.imageUrl,
+      options: req.body.options 
+    });
+
     const { prompt, imageUrl, options = {} } = req.body;
     if (!prompt || !imageUrl)
       return res.status(400).json({ error: '缺少prompt或imageUrl参数' });
@@ -209,14 +296,17 @@ app.post('/api/liblib/img2img', async (req, res) => {
       }
     };
 
-    console.log('LiblibAI Kontext服务 - 图生图请求:', {
+    console.log('🖼️ 图生图请求配置:', {
       url: `${LIBLIB_CONFIG.baseUrl}${uri}`,
       templateUuid: requestData.templateUuid,
       prompt: requestData.generateParams.prompt.substring(0, 100) + '...',
       aspectRatio: requestData.generateParams.aspectRatio,
       guidance_scale: requestData.generateParams.guidance_scale,
-      imageCount: requestData.generateParams.imgCount
+      imageCount: requestData.generateParams.imgCount,
+      imageUrl: imageUrl.substring(0, 80) + '...'
     });
+
+    console.log('🖼️ 完整请求数据:', JSON.stringify(requestData, null, 2));
 
     const fetch = (await import('node-fetch')).default;
     const response = await fetch(url, {
@@ -225,12 +315,19 @@ app.post('/api/liblib/img2img', async (req, res) => {
       body: JSON.stringify(requestData)
     });
 
+    console.log('🖼️ HTTP响应状态:', response.status, response.statusText);
+
     const responseText = await response.text();
+    console.log('🖼️ 原始响应文本:', responseText);
+    
     let result;
     try {
       result = JSON.parse(responseText);
+      console.log('🖼️ 解析后的JSON:', JSON.stringify(result, null, 2));
     } catch (parseError) {
-      console.error('LiblibAI Kontext服务图生图响应解析失败:', responseText.substring(0, 500));
+      console.error('🖼️ JSON解析失败:', parseError);
+      console.error('🖼️ 原始响应长度:', responseText.length);
+      console.error('🖼️ 响应前500字符:', responseText.substring(0, 500));
       return res.status(500).json({
         error: 'API响应格式错误',
         details: responseText.substring(0, 500),
@@ -238,16 +335,59 @@ app.post('/api/liblib/img2img', async (req, res) => {
       });
     }
 
+    // 详细分析响应结构
+    console.log('🖼️ 响应结构分析:', {
+      hasCode: 'code' in result,
+      codeValue: result.code,
+      codeType: typeof result.code,
+      hasData: 'data' in result,
+      dataValue: result.data,
+      dataType: typeof result.data,
+      hasMsg: 'msg' in result,
+      msgValue: result.msg
+    });
+
+    if (result.data) {
+      console.log('🖼️ data字段分析:', {
+        hasGenerateUuid: 'generateUuid' in result.data,
+        generateUuidValue: result.data.generateUuid,
+        generateUuidType: typeof result.data.generateUuid,
+        dataKeys: Object.keys(result.data)
+      });
+    }
+
     if (!response.ok) {
-      console.error('LiblibAI Kontext服务图生图请求失败:', response.status, result);
+      console.error('🖼️ HTTP请求失败:', response.status, result);
       return res.status(response.status).json(result);
     }
 
-    console.log('LiblibAI Kontext服务 - 图生图请求成功:', result);
-    res.json(result);
+    if (result.code !== 0) {
+      console.error('🖼️ API业务逻辑失败:', result);
+      return res.status(400).json(result);
+    }
+
+    // 确保返回标准格式
+    const standardResponse = {
+      code: result.code,
+      data: result.data,
+      msg: result.msg || '',
+      // 为前端添加便于解析的字段
+      success: result.code === 0,
+      generateUuid: result.data?.generateUuid
+    };
+
+    console.log('🖼️ 标准化响应:', JSON.stringify(standardResponse, null, 2));
+    console.log('🖼️ 图生图请求成功完成');
+    
+    res.json(standardResponse);
   } catch (error) {
-    console.error('LiblibAI Kontext服务图生图请求异常:', error);
-    res.status(500).json({ error: error.message });
+    console.error('🖼️ 图生图请求异常:', error);
+    console.error('🖼️ 异常堆栈:', error.stack);
+    res.status(500).json({ 
+      error: error.message,
+      type: 'server_exception',
+      details: error.stack
+    });
   }
 });
 
