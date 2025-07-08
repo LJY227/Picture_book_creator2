@@ -159,6 +159,12 @@ function sanitizePrompt(prompt) {
   const safePrefix = "Safe, family-friendly, children's book style, ";
   const safeSuffix = ", appropriate for children, wholesome, innocent, educational";
 
+  // 确保prompt是字符串类型
+  if (typeof prompt !== 'string') {
+    console.warn('sanitizePrompt: prompt参数不是字符串类型，使用默认值:', prompt);
+    prompt = 'cute cartoon character for children';
+  }
+
   // 移除可能的敏感词汇
   let sanitized = prompt
     .replace(/\b(sexy|adult|mature|violence|weapon|blood|death|scary|horror|dark|evil|bad|dangerous|inappropriate)\b/gi, '')

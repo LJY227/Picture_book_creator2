@@ -183,15 +183,18 @@ export default function CustomStoryEditPage() {
       const imagePrompt = `${characterData.description || characterData.name}, ${page.content}, children's book illustration style, bright and warm colors, simple and clear composition, suitable for children`
       
       // 调用LiblibAI生成图像
-      const imageResult = await generateTextToImageComplete({
-        prompt: imagePrompt,
-        model: 'kontext-v1',
-        width: 1024,
-        height: 1024,
-        guidance_scale: 7.5,
-        num_inference_steps: 20,
-        scheduler: 'DPM++ 2M Karras'
-      })
+      const imageResult = await generateTextToImageComplete(
+        imagePrompt, // 第一个参数：prompt字符串
+        null,        // 第二个参数：onProgress回调
+        {            // 第三个参数：options对象
+          model: 'kontext-v1',
+          width: 1024,
+          height: 1024,
+          guidance_scale: 7.5,
+          num_inference_steps: 20,
+          scheduler: 'DPM++ 2M Karras'
+        }
+      )
 
       // 更新页面数据
       const newPages = [...storyPages]
