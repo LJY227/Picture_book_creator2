@@ -32,13 +32,13 @@ app.use(express.json());
 
 const LIBLIB_CONFIG = {
   baseUrl: 'https://openapi.liblibai.cloud',
-  text2imgEndpoint: '/api/generate/kontext/text2img',
-  img2imgEndpoint: '/api/generate/kontext/img2img',
-  statusEndpoint: '/api/generate/status',
+  text2imgEndpoint: '/api/generate/webui/text2img/ultra',
+  img2imgEndpoint: '/api/generate/webui/img2img/ultra',
+  statusEndpoint: '/api/generate/query',
   accessKey: process.env.VITE_LIBLIB_ACCESS_KEY,
   secretKey: process.env.VITE_LIBLIB_SECRET_KEY,
-  text2imgTemplateUuid: process.env.VITE_LIBLIB_TEMPLATE_UUID || 'fe9928fde1b4491c9b360dd24aa2b115',
-  img2imgTemplateUuid: process.env.VITE_LIBLIB_IMG2IMG_TEMPLATE_UUID || '1c0a9712b3d84e1b8a9f49514a46d88c'
+  // 星流Star-3 Alpha模板UUID（适用于文生图和图生图）
+  templateUuid: '5d7e67009b344550bc1aa6ccbfa1d7f4'
 };
 
 function generateSignature(uri) {
@@ -109,10 +109,10 @@ app.post('/api/liblib/text2img', async (req, res) => {
     const { signature, timestamp, signatureNonce } = generateSignature(uri);
     const url = `${LIBLIB_CONFIG.baseUrl}${uri}?AccessKey=${LIBLIB_CONFIG.accessKey}&Signature=${signature}&Timestamp=${timestamp}&SignatureNonce=${signatureNonce}`;
     const requestData = {
-      templateUuid: LIBLIB_CONFIG.text2imgTemplateUuid,
+      templateUuid: LIBLIB_CONFIG.templateUuid,
       generateParams: {
-        model: "pro",
         prompt: prompt.substring(0, 2000),
+        // 移除model参数，星流API不需要这个参数
         aspectRatio: options.aspectRatio || "3:4",
         guidance_scale: options.guidance_scale || 3.5,
         imgCount: options.imgCount || 1
@@ -147,10 +147,10 @@ app.post('/api/liblib/img2img', async (req, res) => {
     const { signature, timestamp, signatureNonce } = generateSignature(uri);
     const url = `${LIBLIB_CONFIG.baseUrl}${uri}?AccessKey=${LIBLIB_CONFIG.accessKey}&Signature=${signature}&Timestamp=${timestamp}&SignatureNonce=${signatureNonce}`;
     const requestData = {
-      templateUuid: LIBLIB_CONFIG.img2imgTemplateUuid,
+      templateUuid: LIBLIB_CONFIG.templateUuid,
       generateParams: {
-        model: options.model || "pro",
         prompt: prompt.substring(0, 2000),
+        // 移除model参数，星流API不需要这个参数
         aspectRatio: options.aspectRatio || "1:1",
         guidance_scale: options.guidance_scale || 3.5,
         imgCount: options.imgCount || 1,
@@ -177,17 +177,26 @@ app.post('/api/liblib/query/:generateUuid', async (req, res) => {
     if (!generateUuid) return res.status(400).json({ error: '缺少generateUuid参数' });
     if (!LIBLIB_CONFIG.accessKey || !LIBLIB_CONFIG.secretKey)
       return res.status(500).json({ error: 'LiblibAI API配置不完整' });
+    
+    // 根据指南文档，查询接口是GET请求，generateUuid作为查询参数
     const uri = LIBLIB_CONFIG.statusEndpoint;
     const { signature, timestamp, signatureNonce } = generateSignature(uri);
-    const url = `${LIBLIB_CONFIG.baseUrl}${uri}?AccessKey=${LIBLIB_CONFIG.accessKey}&Signature=${signature}&Timestamp=${timestamp}&SignatureNonce=${signatureNonce}`;
-    const requestData = { generateUuid: generateUuid };
+    const url = `${LIBLIB_CONFIG.baseUrl}${uri}?generateUuid=${generateUuid}&AccessKey=${LIBLIB_CONFIG.accessKey}&Signature=${signature}&Timestamp=${timestamp}&SignatureNonce=${signatureNonce}`;
+    
     const fetch = (await import('node-fetch')).default;
-    const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(requestData) });
+    const response = await fetch(url, { 
+      method: 'GET',  // 改为GET请求
+      headers: { 'Content-Type': 'application/json' }
+    });
+    
     const responseText = await response.text();
     let result;
-    try { result = JSON.parse(responseText);} catch (parseError) {
+    try { 
+      result = JSON.parse(responseText);
+    } catch (parseError) {
       return res.status(500).json({ error: '查询响应格式错误', details: responseText.substring(0, 500) });
     }
+    
     if (!response.ok) return res.status(response.status).json(result);
     res.json(result);
   } catch (error) {
