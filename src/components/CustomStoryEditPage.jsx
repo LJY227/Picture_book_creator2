@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card.j
 import { Textarea } from '@/components/ui/textarea.jsx'
 import { Label } from '@/components/ui/label.jsx'
 import { Badge } from '@/components/ui/badge.jsx'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog.jsx'
 
 import { 
   ArrowLeft, 
@@ -20,7 +21,9 @@ import {
   RefreshCw,
   Trash2,
   Edit3,
-  Wand2
+  Wand2,
+  Eye,
+  ZoomIn
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useLanguage } from '../contexts/LanguageContext.jsx'
@@ -44,6 +47,10 @@ export default function CustomStoryEditPage() {
   const [isGeneratingImage, setIsGeneratingImage] = useState(null)
   const [isGeneratingContent, setIsGeneratingContent] = useState(null) // 改为可以跟踪特定页面的生成状态
   const [isSaving, setIsSaving] = useState(false)
+
+  // 图片预览状态
+  const [previewImageUrl, setPreviewImageUrl] = useState(null)
+  const [previewImageOpen, setPreviewImageOpen] = useState(false)
 
   // 初始化数据
   useEffect(() => {
@@ -327,6 +334,12 @@ ${basePrompt}
         return `A ${characterIdentity} character named ${name}`
       }
     }
+  }
+
+  // 预览图片功能
+  const handlePreviewImage = (imageUrl) => {
+    setPreviewImageUrl(imageUrl)
+    setPreviewImageOpen(true)
   }
 
   // 智能生成页面内容
@@ -723,17 +736,37 @@ ${followingContent ? `后续故事内容：\n${followingContent}` : ''}
                             <img 
                               src={page.imageUrl} 
                               alt={`第${page.pageNumber}页插画`}
-                              className="w-full h-64 object-cover rounded-lg border border-gray-200"
+                              className="w-full h-64 object-cover rounded-lg border border-gray-200 cursor-pointer"
+                              onClick={() => handlePreviewImage(page.imageUrl)}
                             />
                             <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-all duration-200 rounded-lg flex items-center justify-center">
                               <Button
-                                onClick={() => handleGenerateImage(index)}
+                                onClick={() => handlePreviewImage(page.imageUrl)}
                                 variant="outline"
                                 size="sm"
                                 className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-white/90 hover:bg-white"
                               >
-                                <RefreshCw className="w-4 h-4 mr-1" />
-                                重新生成
+                                <Eye className="w-4 h-4 mr-1" />
+                                预览图片
+                              </Button>
+                            </div>
+                            {/* 右下角重新生成小按钮 */}
+                            <div className="absolute bottom-2 right-2">
+                              <Button
+                                onClick={(e) => {
+                                  e.stopPropagation() // 防止触发图片预览
+                                  handleGenerateImage(index)
+                                }}
+                                variant="outline"
+                                size="sm"
+                                className="opacity-80 hover:opacity-100 bg-white/90 hover:bg-white border-gray-300 text-gray-600 hover:text-gray-800"
+                                disabled={isGeneratingImage === index}
+                              >
+                                {isGeneratingImage === index ? (
+                                  <Loader2 className="w-3 h-3 animate-spin" />
+                                ) : (
+                                  <RefreshCw className="w-3 h-3" />
+                                )}
                               </Button>
                             </div>
                           </div>
@@ -755,6 +788,27 @@ ${followingContent ? `后续故事内容：\n${followingContent}` : ''}
           </div>
         </div>
       </div>
+
+      {/* 图片预览对话框 */}
+      <Dialog open={previewImageOpen} onOpenChange={setPreviewImageOpen}>
+        <DialogContent className="max-w-4xl w-full">
+          <DialogHeader>
+            <DialogTitle className="flex items-center">
+              <ZoomIn className="w-5 h-5 mr-2" />
+              插画预览
+            </DialogTitle>
+          </DialogHeader>
+          {previewImageUrl && (
+            <div className="flex justify-center">
+              <img 
+                src={previewImageUrl} 
+                alt="插画预览"
+                className="max-w-full max-h-[70vh] object-contain rounded-lg"
+              />
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* 底部按钮 */}
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-6 py-4">
