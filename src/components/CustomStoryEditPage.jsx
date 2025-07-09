@@ -191,26 +191,29 @@ export default function CustomStoryEditPage() {
     setIsGeneratingImage(pageIndex)
     
     try {
-      // 构建基础提示词（先用中文描述，然后翻译成英文）
-      let basePrompt = `${characterData.description || characterData.name}, ${page.content}`
+      // 构建角色标识符（使用优化的格式）
+      const characterIdentifier = buildCharacterIdentifier(characterData, referenceImageUrl)
       
-      // 翻译提示词为英文（确保图像生成使用英文关键词）
-      console.log('🔤 原始提示词:', basePrompt)
+      // 构建基础提示词（重点关注场景描述）
+      let basePrompt = `${characterIdentifier}, ${page.content}`
+      
+      console.log('🔤 原始提示词（包含角色名称）:', basePrompt)
       
       // 检查是否包含中文，如果包含则翻译
       let englishPrompt = basePrompt
       if (/[\u4e00-\u9fff]/.test(basePrompt)) {
         console.log('🔄 检测到中文，开始翻译为英文...')
         try {
-          const translatePrompt = `请将以下中文内容翻译为英文，保持角色特征和场景描述的完整性，适合图像生成使用：
+          const translatePrompt = `请将以下中文内容翻译为英文，保持角色标识和场景描述的完整性，适合图像生成使用：
 
 ${basePrompt}
 
 要求：
-1. 翻译为英文
-2. 保持原意不变
+1. 保持角色标识格式不变
+2. 重点翻译场景描述部分
 3. 适合图像生成
 4. 简洁明了
+5. 保持故事情节的表达
 
 英文翻译：`
 
@@ -221,7 +224,7 @@ ${basePrompt}
 
           if (translateResult?.choices?.[0]?.message?.content) {
             englishPrompt = translateResult.choices[0].message.content.trim()
-            console.log('✅ 翻译结果:', englishPrompt)
+            console.log('✅ 翻译结果（包含角色名称）:', englishPrompt)
           }
         } catch (translateError) {
           console.warn('翻译失败，使用简单映射:', translateError)
@@ -233,7 +236,7 @@ ${basePrompt}
       // 添加通用的英文绘本风格关键词
       const finalPrompt = `${englishPrompt}, children's book illustration style, bright and warm colors, simple and clear composition, suitable for children, appropriate for children, wholesome, innocent, educational`
       
-      console.log('🎨 最终英文提示词:', finalPrompt)
+      console.log('🎨 最终英文提示词（含角色名称）:', finalPrompt)
 
       let imageResult = null
 
@@ -297,6 +300,32 @@ ${basePrompt}
       alert(`生成图像失败：${error.message || '请稍后重试'}`)
     } finally {
       setIsGeneratingImage(null)
+    }
+  }
+
+  // 构建角色标识符（优化格式）
+  const buildCharacterIdentifier = (characterData, hasReferenceImage) => {
+    const { name, identity, customIdentity } = characterData
+    
+    // 确定角色身份
+    let characterIdentity = identity
+    if (identity === 'other' && customIdentity) {
+      characterIdentity = customIdentity
+    }
+    
+    // 根据是否有参考图像使用不同的描述策略
+    if (hasReferenceImage) {
+      // 图生图模式：使用简化的角色标识，让参考图像承担角色外观信息
+      return `A ${characterIdentity} character named ${name}`
+    } else {
+      // 文生图模式：保留详细描述，但优化格式
+      if (characterData.description && characterData.description.trim()) {
+        // 如果有详细描述，在前面加上角色标识
+        return `A ${characterIdentity} character named ${name}: ${characterData.description}`
+      } else {
+        // 如果没有详细描述，使用简化格式
+        return `A ${characterIdentity} character named ${name}`
+      }
     }
   }
 

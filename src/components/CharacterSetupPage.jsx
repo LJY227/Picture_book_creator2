@@ -116,8 +116,6 @@ export default function CharacterSetupPage() {
 6. 不要包含艺术风格描述（如水彩、卡通等），这将单独处理
 7. 直接返回中文关键词描述，不需要分类标题
 
-示例格式：一个/一只...的${customIdentity}，拥有...特征，穿着...，表情...，充满...氛围。
-
 请直接生成关键词描述：`
 
       const result = await callQwenChat({
@@ -201,6 +199,143 @@ export default function CharacterSetupPage() {
       alert(t('character.identity.generation.failed'))
     } finally {
       setIsGeneratingIdentity(false)
+    }
+  }
+
+  // 分析角色身份类型
+  const analyzeIdentityType = (identity) => {
+    const identityLower = identity.toLowerCase()
+    
+    // 车辆类
+    const vehicleKeywords = ['车', '摩托', '汽车', '飞机', '火车', '船', '自行车', 'car', 'motorcycle', 'plane', 'train', 'boat', 'bicycle']
+    if (vehicleKeywords.some(keyword => identityLower.includes(keyword))) {
+      return 'vehicle'
+    }
+    
+    // 机器/机器人类
+    const robotKeywords = ['机器人', '机器', '机甲', 'robot', 'machine', 'mech']
+    if (robotKeywords.some(keyword => identityLower.includes(keyword))) {
+      return 'robot'
+    }
+    
+    // 动物类
+    const animalKeywords = ['猫', '狗', '熊', '兔', '鸟', '鱼', '猴', '狮', '虎', 'cat', 'dog', 'bear', 'rabbit', 'bird', 'fish', 'monkey', 'lion', 'tiger']
+    if (animalKeywords.some(keyword => identityLower.includes(keyword))) {
+      return 'animal'
+    }
+    
+    // 玩具类
+    const toyKeywords = ['玩具', '娃娃', '公仔', 'toy', 'doll', 'plush']
+    if (toyKeywords.some(keyword => identityLower.includes(keyword))) {
+      return 'toy'
+    }
+    
+    // 职业/人类角色类
+    const humanKeywords = ['公主', '王子', '超级英雄', '医生', '老师', '科学家', '魔法师', 'princess', 'prince', 'superhero', 'doctor', 'teacher', 'scientist', 'wizard']
+    if (humanKeywords.some(keyword => identityLower.includes(keyword))) {
+      return 'human'
+    }
+    
+    // 默认为抽象角色
+    return 'abstract'
+  }
+
+  // 根据身份类型构建提示词
+  const buildIdentityPrompt = (identity, type) => {
+    const baseRequirements = `请为"${identity}"这个角色身份生成适合Kontext图像模型的详细关键词描述。
+
+基本要求：
+- 生成一段完整的、适合图像生成的关键词描述
+- 确保内容积极正面，适合儿童绘本
+- 风格要生动有趣，富有想象力
+- 不要包含场景描述（如背景、环境等），统一使用白底
+- 不要包含艺术风格描述（如水彩、卡通等），这将单独处理
+- 直接返回中文关键词描述，不需要分类标题`
+
+    switch (type) {
+      case 'vehicle':
+        return `${baseRequirements}
+
+特殊要求（车辆角色）：
+- 重点描述车辆的外观特征：颜色、形状、大小、装饰等
+- 可以拟人化：给车辆添加表情、眼睛等可爱特征
+- 绝对不要添加人类服装（如衣服、鞋子、帽子等）
+- 可以添加车辆特有的装饰：贴纸、图案、车灯、轮胎样式等
+- 表情和姿态：可以描述"友善的大灯眼睛"、"自信的车头姿态"等
+
+示例格式：一辆/一架帅气的${identity}，拥有[颜色和外观特征]，车身上有[装饰和图案]，[表情特征]，[整体氛围]。
+
+请生成描述：`
+
+      case 'robot':
+        return `${baseRequirements}
+
+特殊要求（机器人角色）：
+- 重点描述机器人的金属质感、科技感外观
+- 可以有机械关节、LED灯、天线等科技元素
+- 避免过多人类化特征，保持机器人特色
+- 可以有友善的显示屏表情或LED眼睛
+- 颜色可以是金属色、亮色等科技感色彩
+
+示例格式：一个/一台可爱的${identity}，拥有[金属质感和科技特征]，身上有[科技元素]，[友善表情]，[科技氛围]。
+
+请生成描述：`
+
+      case 'animal':
+        return `${baseRequirements}
+
+特殊要求（动物角色）：
+- 重点描述动物的自然特征：毛发、羽毛、体型等
+- 可以适度拟人化：添加简单服装或配饰
+- 保持动物的基本特征和可爱外观
+- 表情要友善温暖，适合儿童
+- 可以有动物特有的动作和姿态
+
+示例格式：一只可爱的${identity}，拥有[动物特征]，穿着[简单服装]，[表情和姿态]，[温暖氛围]。
+
+请生成描述：`
+
+      case 'toy':
+        return `${baseRequirements}
+
+特殊要求（玩具角色）：
+- 重点描述玩具的材质感：毛绒、塑料、布料等
+- 颜色要鲜艳可爱，适合儿童喜好
+- 可以有玩具特有的缝线、纽扣等细节
+- 表情要特别可爱和友善
+- 体现玩具的温馨和陪伴感
+
+示例格式：一个/一只可爱的${identity}，有着[材质和颜色特征]，[玩具特有细节]，[可爱表情]，[温馨氛围]。
+
+请生成描述：`
+
+      case 'human':
+        return `${baseRequirements}
+
+特殊要求（人类角色）：
+- 重点描述人物的外貌：年龄、发型、体型等
+- 服装要符合角色身份特点
+- 表情要积极正面，适合儿童榜样
+- 可以有职业特色的道具或标志
+- 整体形象要亲和友善
+
+示例格式：一个/一位可爱的${identity}，有着[外貌特征]，穿着[符合身份的服装]，[表情和姿态]，[积极氛围]。
+
+请生成描述：`
+
+      default:
+        return `${baseRequirements}
+
+特殊要求（抽象角色）：
+- 根据角色身份的特点进行创意描述
+- 可以融合多种元素，但要保持统一性
+- 重点突出角色的独特性和魅力
+- 确保描述生动有趣，富有想象力
+- 适合儿童理解和喜爱
+
+示例格式：一个/一位神奇的${identity}，拥有[独特特征]，[特色装饰或能力]，[表情和姿态]，[神奇氛围]。
+
+请生成描述：`
     }
   }
 
