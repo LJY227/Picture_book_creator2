@@ -6,6 +6,7 @@ import {
   getStandardCharacterDefinition,
   getEnhancedCharacterDefinition
 } from './characterConsistency.js';
+import { optimizeStoryImagePrompt } from './advancedIllustrationPrompt.js';
 
 // 获取后端API地址 - 使用相对路径
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
@@ -1048,7 +1049,9 @@ export async function generatePictureBook({ character, story, content, onProgres
         const imageProgress = 60 + (current / total) * 35; // 60-95%
         onProgress && onProgress(`正在生成第${current}/${total}页插画...`, imageProgress);
       },
-      useCharacterConsistency
+      useCharacterConsistency,
+      story,  // 传递故事数据
+      content // 传递内容数据
     );
 
     onProgress && onProgress('生成完成！', 100);
@@ -1258,7 +1261,7 @@ function buildPrompt({ character, story, content }) {
  * @param {boolean} useCharacterConsistency - 是否使用角色一致性功能
  * @returns {Promise<Array>} 包含插画的页面数组
  */
-async function generateImagesForPages(pages, character, imageEngine, onProgress, useCharacterConsistency = false) {
+async function generateImagesForPages(pages, character, imageEngine, onProgress, useCharacterConsistency = false, storyData = null, contentData = null) {
   const pagesWithImages = [];
   let masterCharacterData = null;
   let characterDefinition = null;
@@ -1320,7 +1323,7 @@ async function generateImagesForPages(pages, character, imageEngine, onProgress,
           } else {
             console.log('⚠️ 角色一致性插画生成失败，使用传统模式');
             // 降级到传统模式
-            imagePrompt = buildLiblibImagePrompt(page, character);
+            imagePrompt = await buildLiblibImagePrompt(page, character, storyData, contentData);
             const liblibResult = await generateTextToImageComplete(imagePrompt);
             if (liblibResult.status === 'success' && liblibResult.imageUrl) {
               imageUrl = liblibResult.imageUrl;
@@ -1328,7 +1331,7 @@ async function generateImagesForPages(pages, character, imageEngine, onProgress,
           }
         } else {
           // 传统LiblibAI文生图模式
-          imagePrompt = buildLiblibImagePrompt(page, character);
+          imagePrompt = await buildLiblibImagePrompt(page, character, storyData, contentData);
           console.log(`LiblibAI图像提示词:`, imagePrompt);
           
           const liblibResult = await generateTextToImageComplete(
@@ -1360,7 +1363,7 @@ async function generateImagesForPages(pages, character, imageEngine, onProgress,
       } else {
         // 🚫 DALL-E 3已移除 - 使用LiblibAI备用方案
         console.log(`🔄 DALL-E 3功能已移除，使用LiblibAI备用方案...`);
-        imagePrompt = buildLiblibImagePrompt(page, character);
+        imagePrompt = await buildLiblibImagePrompt(page, character, storyData, contentData);
         
         const liblibResult = await generateTextToImageComplete(
           imagePrompt,
@@ -1439,31 +1442,23 @@ async function generateImagesForPages(pages, character, imageEngine, onProgress,
  * @param {Object} character - 角色信息
  * @returns {string} 图像生成提示词
  */
-function buildLiblibImagePrompt(page, character) {
-  const characterDescription = generateCharacterDescription(character);
-  const characterName = character.name || '主角';
-  const sceneDescription = page.sceneDescription || `${characterName} in a children's book scene`;
+async function buildLiblibImagePrompt(page, character, storyData = null, contentData = null) {
+  // 优先使用页面的场景描述，如果没有则使用imagePrompt或构建基础描述
+  const originalPrompt = page.sceneDescription || page.imagePrompt || `${character.name || '主角'} in a children's book scene`;
   
-  // 构建强调角色一致性的描述
-  const consistencyNote = `CONSISTENT CHARACTER: ${characterName} with ${characterDescription}`;
+  console.log('🎨 OpenAI原始插画描述:', originalPrompt);
   
-  // 构建故事内容对应的描述
-  const storyContent = page.content ? `, showing exactly this scene: ${page.content}` : '';
+  // 使用高级插画描述优化器（支持AI智能分析）
+  const optimizedPrompt = await optimizeStoryImagePrompt(originalPrompt, character, {
+    storyData,
+    contentData,
+    pageContent: page.content || page.text,
+    useAIAnalysis: true
+  });
   
-  // 获取用户选择的风格，如果没有则使用默认风格
-  let artStyle = 'watercolor illustration style, soft colors, gentle brushstrokes, artistic, painted texture';
-  if (character.artStyle && character.artStyle.trim()) {
-    artStyle = character.artStyle;
-    console.log('🎨 OpenAI LiblibAI 使用用户选择的风格:', artStyle);
-  } else {
-    console.log('🎨 OpenAI LiblibAI 使用默认水彩风格:', artStyle);
-  }
+  console.log(`🎨 第${page.pageNumber}页优化后的LiblibAI插画描述:`, optimizedPrompt);
   
-  // LiblibAI适用的完整提示词格式，强调一致性和准确性
-  const prompt = `Children's book illustration, ${consistencyNote}, ${sceneDescription}${storyContent}, ${artStyle}, child-friendly, educational, wholesome, appropriate for children aged 3-7, clean background, storybook style, character must look exactly the same in every image, precise scene matching, autism-friendly design`;
-  
-  console.log(`第${page.pageNumber}页LiblibAI提示词:`, prompt);
-  return prompt;
+  return optimizedPrompt;
 }
 
 /**

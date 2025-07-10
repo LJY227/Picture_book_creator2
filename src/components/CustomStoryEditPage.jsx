@@ -240,17 +240,54 @@ ${basePrompt}
         }
       }
       
-      // 获取用户选择的风格，如果没有则使用默认风格
-      let artStyle = 'watercolor illustration style, soft colors, gentle brushstrokes, artistic, painted texture';
-      if (characterData.artStyle && characterData.artStyle.trim()) {
-        artStyle = characterData.artStyle;
-        console.log('🎨 使用用户选择的风格:', artStyle);
-      } else {
-        console.log('🎨 使用默认水彩风格:', artStyle);
+      // 使用高级插画描述优化器，支持AI智能分析
+      let finalPrompt;
+      try {
+        const { generateAdvancedIllustrationPrompt } = await import('../lib/advancedIllustrationPrompt.js');
+        
+        // 构建故事和内容数据用于智能分析
+        const storyData = {
+          type: 'custom',
+          pages: pages?.length || 6,
+          setting: '自定义故事场景'
+        };
+        
+        const contentData = {
+          mode: 'custom',
+          educationalTopic: '用户自定义内容',
+          customContent: selectedPage.content || selectedPage.text,
+          educationalGoals: '基于用户自定义内容的学习目标'
+        };
+        
+        console.log('🧠 启用AI智能分析优化插画提示词...');
+        const optimizationResult = await generateAdvancedIllustrationPrompt({
+          pageContent: selectedPage.content || selectedPage.text,
+          characterData,
+          storyData,
+          contentData,
+          useReferenceImage: false,
+          artStyle: null,
+          useAIAnalysis: true
+        });
+        
+        finalPrompt = optimizationResult.prompt;
+        console.log('✅ AI智能优化完成，最终提示词:', finalPrompt);
+        
+      } catch (error) {
+        console.error('❌ AI智能优化失败，使用基础模式:', error);
+        
+        // 回退到基础模式
+        let artStyle = 'watercolor illustration style, soft colors, gentle brushstrokes, artistic, painted texture';
+        if (characterData.artStyle && characterData.artStyle.trim()) {
+          artStyle = characterData.artStyle;
+          console.log('🎨 使用用户选择的风格:', artStyle);
+        } else {
+          console.log('🎨 使用默认水彩风格:', artStyle);
+        }
+        
+        finalPrompt = `${englishPrompt}, ${artStyle}, children's book illustration style, bright and warm colors, simple and clear composition, suitable for children, appropriate for children, wholesome, innocent, educational`;
+        console.log('🎨 基础模式最终提示词:', finalPrompt);
       }
-      
-      // 添加风格和通用绘本关键词
-      const finalPrompt = `${englishPrompt}, ${artStyle}, children's book illustration style, bright and warm colors, simple and clear composition, suitable for children, appropriate for children, wholesome, innocent, educational`
       
       console.log('🎨 最终英文提示词（含角色名称和风格）:', finalPrompt)
 

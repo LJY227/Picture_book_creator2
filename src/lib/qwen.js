@@ -7,6 +7,7 @@ import {
   getEnhancedCharacterDefinition
 } from './characterConsistency.js';
 import { buildMultilingualPrompt, translateCharacterDescriptionToEnglish } from './promptTranslator.js';
+import { optimizeStoryImagePrompt } from './advancedIllustrationPrompt.js';
 
 // 获取后端API地址 - 使用相对路径
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
@@ -930,7 +931,9 @@ export async function generatePictureBook({ character, story, content, onProgres
         onProgress && onProgress(`生成第${currentPage}页插画 (${currentPage}/${totalPages})`, progress);
       },
       useCharacterConsistency,
-      storyData.secondaryCharacters // 传入次要角色定义
+      storyData.secondaryCharacters, // 传入次要角色定义
+      story, // 传递故事数据
+      content // 传递内容数据
     );
     
     console.log('🎨 所有插画生成完成');
@@ -964,7 +967,9 @@ export async function generatePictureBook({ character, story, content, onProgres
             onProgress && onProgress(`生成第${currentPage}页插画 (${currentPage}/${totalPages})`, progress);
           },
           useCharacterConsistency,
-          null // 备用方案没有次要角色定义
+          null, // 备用方案没有次要角色定义
+          story, // 传递故事数据
+          content // 传递内容数据
         );
         
         return {
@@ -1124,7 +1129,7 @@ ${content.educationalGoals || `通过故事帮助自闭症儿童学习"${educati
 /**
  * 为每页生成插画
  */
-async function generateImagesForPages(pages, character, imageEngine, onProgress, useCharacterConsistency = false, secondaryCharacters = null) {
+async function generateImagesForPages(pages, character, imageEngine, onProgress, useCharacterConsistency = false, secondaryCharacters = null, storyData = null, contentData = null) {
   const results = {
     pages: [],
     characterDefinition: null,
@@ -1174,7 +1179,7 @@ async function generateImagesForPages(pages, character, imageEngine, onProgress,
         imageUrl = result.imageUrl;
       } else {
         // 使用标准方式生成
-        const imagePrompt = buildLiblibImagePrompt(page, character);
+        const imagePrompt = await buildLiblibImagePrompt(page, character, storyData, contentData);
         
         if (imageEngine === 'liblibai') {
           const result = await generateTextToImageComplete(imagePrompt);
@@ -1218,31 +1223,23 @@ async function generateImagesForPages(pages, character, imageEngine, onProgress,
 /**
  * 构建LiblibAI图像提示词
  */
-function buildLiblibImagePrompt(page, character) {
-  const characterDescription = generateCharacterDescription(character);
+async function buildLiblibImagePrompt(page, character, storyData = null, contentData = null) {
+  // 优先使用页面的imagePrompt，如果没有则构建基础描述
+  const originalPrompt = page.imagePrompt || `${character.name || '主角'} in a children's book scene`;
   
-  // 组合角色描述和页面描述
-  const combinedPrompt = `${page.imagePrompt}, featuring ${characterDescription}`;
+  console.log('🎨 Qwen原始插画描述:', originalPrompt);
   
-  // 获取用户选择的风格，如果没有则使用默认风格
-  let artStyle = 'watercolor illustration style, soft colors, gentle brushstrokes, artistic, painted texture';
-  if (character.artStyle && character.artStyle.trim()) {
-    artStyle = character.artStyle;
-    console.log('🎨 Qwen LiblibAI 使用用户选择的风格:', artStyle);
-  } else {
-    console.log('🎨 Qwen LiblibAI 使用默认水彩风格:', artStyle);
-  }
+  // 使用高级插画描述优化器（支持AI智能分析）
+  const optimizedPrompt = await optimizeStoryImagePrompt(originalPrompt, character, {
+    storyData,
+    contentData,
+    pageContent: page.content || page.text,
+    useAIAnalysis: true
+  });
   
-  // 添加质量和风格描述
-  const qualityPrompts = [
-    'high quality',
-    'detailed illustration',
-    'children book style',
-    'warm colors',
-    'friendly atmosphere'
-  ];
+  console.log(`🎨 Qwen第${page.pageNumber}页优化后的LiblibAI插画描述:`, optimizedPrompt);
   
-  return `${combinedPrompt}, ${artStyle}, ${qualityPrompts.join(', ')}`;
+  return optimizedPrompt;
 }
 
 // 生成备用绘本内容（当API失败时使用）
