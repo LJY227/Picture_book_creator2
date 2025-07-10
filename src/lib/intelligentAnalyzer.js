@@ -198,7 +198,9 @@ ${JSON.stringify(storyAnalysis, null, 2)}
 2. 体现角色的核心特征和一致性
 3. 传达正确的情感和教育价值
 4. 适合自闭症儿童的视觉需求
-5. 确保配角与主角的物种一致性
+5. **重要：确保所有角色（包括父母、朋友等配角）都与主角保持相同的物种特征**
+6. **强调：如果主角是动物，所有家庭成员和配角也必须是同样的动物**
+7. **明确：避免人类和动物角色混合出现在同一场景中**
 
 请返回JSON格式的优化建议：
 
@@ -209,7 +211,7 @@ ${JSON.stringify(storyAnalysis, null, 2)}
   "emotionalTone": "情感基调描述",
   "educationalElements": ["教育元素1", "元素2"],
   "visualComposition": "视觉构图建议",
-  "secondaryCharacters": "配角描述优化",
+  "secondaryCharacters": "配角详细描述（必须明确说明配角与主角相同的物种特征，如都是动物或都是人类）",
   "environmentDetails": "环境细节建议"
 }`;
 
@@ -236,7 +238,7 @@ ${JSON.stringify(storyAnalysis, null, 2)}
         emotionalTone: '温馨友好',
         educationalElements: ['基础教育价值'],
         visualComposition: '简洁明了',
-        secondaryCharacters: '基础描述',
+        secondaryCharacters: '配角保持与主角相同的物种特征',
         environmentDetails: '简单环境'
       };
     }

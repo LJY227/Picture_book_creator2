@@ -148,7 +148,18 @@ function ensureSecondaryCharacterConsistency(sceneText, mainCharacterType) {
       'father': `${mainCharacterType.species} father`,
       'teacher': `${mainCharacterType.species} teacher`,
       'friend': `${mainCharacterType.species} friend`,
-      'classmate': `${mainCharacterType.species} classmate`
+      'classmate': `${mainCharacterType.species} classmate`,
+      // 增强的英文通用配角替换
+      'mom': `${mainCharacterType.species} mother`,
+      'dad': `${mainCharacterType.species} father`,
+      'parent': `${mainCharacterType.species} parent`,
+      'woman': `${mainCharacterType.species} mother`,
+      'man': `${mainCharacterType.species} father`,
+      'adult': `adult ${mainCharacterType.species}`,
+      'person': `${mainCharacterType.species} character`,
+      'human': `${mainCharacterType.species} character`,
+      'lady': `${mainCharacterType.species} female`,
+      'gentleman': `${mainCharacterType.species} male`
     },
     robot: {
       '妈妈': 'robot mother unit',
@@ -383,8 +394,52 @@ export async function generateAdvancedIllustrationPrompt({
       
       if (analysisResult.success) {
         console.log('✅ AI智能分析完成，使用优化后的提示词');
+        
+        // 应用配角一致性检查，确保即使AI分析结果也符合物种一致性
+        let finalOptimizedPrompt = analysisResult.finalPrompt;
+        
+        // 检查并强化配角物种一致性
+        if (fixedCharacter.characterType.type !== 'human') {
+          console.log('🔍 检查AI分析结果中的配角一致性...');
+          
+          // 确保提示词中的配角都是同样的物种
+          const speciesName = fixedCharacter.characterType.species || fixedCharacter.characterType.type;
+          
+          // 强化配角描述的物种一致性
+          const roleReplacements = {
+            'mother': `${speciesName} mother`,
+            'mom': `${speciesName} mother`, 
+            'father': `${speciesName} father`,
+            'dad': `${speciesName} father`,
+            'parent': `${speciesName} parent`,
+            'teacher': `${speciesName} teacher`,
+            'friend': `${speciesName} friend`,
+            'classmate': `${speciesName} classmate`,
+            'similarly styled': `similarly styled ${speciesName}`,
+            'human mother': `${speciesName} mother`,
+            'human father': `${speciesName} father`,
+            'woman': `${speciesName} mother`,
+            'man': `${speciesName} father`,
+            'adult': `adult ${speciesName}`,
+            'person': `${speciesName} character`
+          };
+          
+          Object.entries(roleReplacements).forEach(([human, animal]) => {
+            const regex = new RegExp(`\\b${human}\\b`, 'gi');
+            finalOptimizedPrompt = finalOptimizedPrompt.replace(regex, animal);
+          });
+          
+          // 额外强化：确保"who is a"句式中的物种一致性
+          finalOptimizedPrompt = finalOptimizedPrompt.replace(
+            /who is a ([^,]*?)(mother|father|parent|teacher|friend)/gi, 
+            `who is a ${speciesName} $2`
+          );
+          
+          console.log('🔄 配角一致性检查完成，已应用物种强化');
+        }
+        
         return {
-          prompt: analysisResult.finalPrompt,
+          prompt: finalOptimizedPrompt,
           characterType: fixedCharacter.characterType,
           worldView: analysisResult.characterAnalysis?.characterType?.category || 'unknown',
           environment: analysisResult.illustrationOptimization?.environmentDetails || 'children book scene',
@@ -396,7 +451,8 @@ export async function generateAdvancedIllustrationPrompt({
             analysisVersion: analysisResult.metadata.analysisVersion,
             characterAnalysis: analysisResult.characterAnalysis,
             storyAnalysis: analysisResult.storyAnalysis,
-            illustrationOptimization: analysisResult.illustrationOptimization
+            illustrationOptimization: analysisResult.illustrationOptimization,
+            secondaryCharacterConsistencyApplied: fixedCharacter.characterType.type !== 'human'
           }
         };
       } else {
@@ -534,7 +590,43 @@ export async function optimizeStoryImagePrompt(originalImagePrompt, characterDat
       
       if (analysisResult.success) {
         console.log('✅ AI智能优化完成');
-        return analysisResult.finalPrompt;
+        
+        // 对AI分析结果也应用配角一致性检查
+        const fixedCharacter = generateFixedCharacterDescription(characterData);
+        let finalOptimizedPrompt = analysisResult.finalPrompt;
+        
+        if (fixedCharacter.characterType.type !== 'human') {
+          console.log('🔍 对AI优化结果应用配角一致性检查...');
+          
+          const speciesName = fixedCharacter.characterType.species || fixedCharacter.characterType.type;
+          
+          const roleReplacements = {
+            'mother': `${speciesName} mother`,
+            'mom': `${speciesName} mother`, 
+            'father': `${speciesName} father`,
+            'dad': `${speciesName} father`,
+            'parent': `${speciesName} parent`,
+            'teacher': `${speciesName} teacher`,
+            'friend': `${speciesName} friend`,
+            'classmate': `${speciesName} classmate`,
+            'similarly styled': `similarly styled ${speciesName}`,
+            'human mother': `${speciesName} mother`,
+            'human father': `${speciesName} father`,
+            'woman': `${speciesName} mother`,
+            'man': `${speciesName} father`,
+            'adult': `adult ${speciesName}`,
+            'person': `${speciesName} character`
+          };
+          
+          Object.entries(roleReplacements).forEach(([human, animal]) => {
+            const regex = new RegExp(`\\b${human}\\b`, 'gi');
+            finalOptimizedPrompt = finalOptimizedPrompt.replace(regex, animal);
+          });
+          
+          console.log('🔄 AI分析结果配角一致性检查完成');
+        }
+        
+        return finalOptimizedPrompt;
       } else {
         console.warn('⚠️ AI智能优化失败，使用基础优化');
       }
