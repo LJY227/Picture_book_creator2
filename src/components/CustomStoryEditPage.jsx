@@ -255,13 +255,13 @@ ${basePrompt}
         const contentData = {
           mode: 'custom',
           educationalTopic: '用户自定义内容',
-          customContent: selectedPage.content || selectedPage.text,
+          customContent: page.content || page.text,
           educationalGoals: '基于用户自定义内容的学习目标'
         };
         
         console.log('🧠 启用AI智能分析优化插画提示词...');
         const optimizationResult = await generateAdvancedIllustrationPrompt({
-          pageContent: selectedPage.content || selectedPage.text,
+          pageContent: page.content || page.text,
           characterData,
           storyData,
           contentData,
