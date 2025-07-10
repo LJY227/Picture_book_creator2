@@ -248,7 +248,7 @@ ${basePrompt}
         // 构建故事和内容数据用于智能分析
         const storyData = {
           type: 'custom',
-          pages: pages?.length || 6,
+          pages: storyPages?.length || 6,
           setting: '自定义故事场景'
         };
         
