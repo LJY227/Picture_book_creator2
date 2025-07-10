@@ -1224,6 +1224,15 @@ function buildLiblibImagePrompt(page, character) {
   // 组合角色描述和页面描述
   const combinedPrompt = `${page.imagePrompt}, featuring ${characterDescription}`;
   
+  // 获取用户选择的风格，如果没有则使用默认风格
+  let artStyle = 'watercolor illustration style, soft colors, gentle brushstrokes, artistic, painted texture';
+  if (character.artStyle && character.artStyle.trim()) {
+    artStyle = character.artStyle;
+    console.log('🎨 Qwen LiblibAI 使用用户选择的风格:', artStyle);
+  } else {
+    console.log('🎨 Qwen LiblibAI 使用默认水彩风格:', artStyle);
+  }
+  
   // 添加质量和风格描述
   const qualityPrompts = [
     'high quality',
@@ -1233,7 +1242,7 @@ function buildLiblibImagePrompt(page, character) {
     'friendly atmosphere'
   ];
   
-  return `${combinedPrompt}, ${qualityPrompts.join(', ')}`;
+  return `${combinedPrompt}, ${artStyle}, ${qualityPrompts.join(', ')}`;
 }
 
 // 生成备用绘本内容（当API失败时使用）

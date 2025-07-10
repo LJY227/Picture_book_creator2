@@ -319,10 +319,21 @@ async function generateMasterCharacterImageFallback(character, onProgress = null
 /**
  * 构建主角生成提示词
  * @param {Object} characterDef - 标准化角色定义
+ * @param {string} artStyle - 艺术风格（可选，如果未提供则从角色定义中获取）
  * @returns {string} 主角生成提示词
  */
-function buildMasterCharacterPrompt(characterDef, artStyle = 'watercolor illustration style, soft colors, gentle brushstrokes, artistic, painted texture') {
-  return `Safe, family-friendly, children's book style, ${characterDef.description}, ${artStyle}, white background, appropriate for children, wholesome, innocent, educational, character reference sheet, front view, clear details`;
+function buildMasterCharacterPrompt(characterDef, artStyle = null) {
+  // 获取用户选择的风格，优先级：参数 > 角色定义 > 默认水彩风格
+  let finalArtStyle = artStyle;
+  if (!finalArtStyle && characterDef.artStyle && characterDef.artStyle.trim()) {
+    finalArtStyle = characterDef.artStyle;
+    console.log('🎨 主角生成使用角色定义中的风格:', finalArtStyle);
+  } else if (!finalArtStyle) {
+    finalArtStyle = 'watercolor illustration style, soft colors, gentle brushstrokes, artistic, painted texture';
+    console.log('🎨 主角生成使用默认水彩风格:', finalArtStyle);
+  }
+  
+  return `Safe, family-friendly, children's book style, ${characterDef.description}, ${finalArtStyle}, white background, appropriate for children, wholesome, innocent, educational, character reference sheet, front view, clear details`;
 }
 
 /**
@@ -562,9 +573,11 @@ function getCharacterType(characterDef) {
  * 构建插画生成提示词
  * @param {string} sceneDescription - 场景描述
  * @param {Object} characterDef - 角色定义
+ * @param {Array} secondaryCharacters - 次要角色
+ * @param {string} artStyle - 艺术风格（可选，如果未提供则从角色定义中获取）
  * @returns {string} 插画生成提示词
  */
-function buildIllustrationPrompt(sceneDescription, characterDef, secondaryCharacters = null, artStyle = 'watercolor illustration style, soft colors, gentle brushstrokes, artistic, painted texture') {
+function buildIllustrationPrompt(sceneDescription, characterDef, secondaryCharacters = null, artStyle = null) {
   // 识别其他角色，传入角色定义避免重复添加相同类型的角色
   const otherCharactersDesc = identifyOtherCharacters(sceneDescription, characterDef, secondaryCharacters);
   
@@ -572,13 +585,23 @@ function buildIllustrationPrompt(sceneDescription, characterDef, secondaryCharac
   // 避免详细的角色描述与场景描述冲突
   const simplifiedCharacterDesc = `the main character`;
   
+  // 获取用户选择的风格，优先级：参数 > 角色定义 > 默认水彩风格
+  let finalArtStyle = artStyle;
+  if (!finalArtStyle && characterDef.artStyle && characterDef.artStyle.trim()) {
+    finalArtStyle = characterDef.artStyle;
+    console.log('🎨 插画生成使用角色定义中的风格:', finalArtStyle);
+  } else if (!finalArtStyle) {
+    finalArtStyle = 'watercolor illustration style, soft colors, gentle brushstrokes, artistic, painted texture';
+    console.log('🎨 插画生成使用默认水彩风格:', finalArtStyle);
+  }
+  
   console.log('🎨 角色一致性模式 - 使用简化角色描述，避免与参考图片冲突');
   console.log('🎨 原始角色描述:', characterDef.description);
   console.log('🎨 简化角色描述:', simplifiedCharacterDesc);
   console.log('🎨 主角类型:', getCharacterType(characterDef));
   console.log('🎨 其他角色描述:', otherCharactersDesc);
   
-  return `Safe, family-friendly, children's book style, ${simplifiedCharacterDesc}${otherCharactersDesc}, ${sceneDescription}, ${artStyle}, white background, appropriate for children, wholesome, innocent, educational`;
+  return `Safe, family-friendly, children's book style, ${simplifiedCharacterDesc}${otherCharactersDesc}, ${sceneDescription}, ${finalArtStyle}, white background, appropriate for children, wholesome, innocent, educational`;
 }
 
 /**

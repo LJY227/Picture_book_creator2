@@ -1450,8 +1450,17 @@ function buildLiblibImagePrompt(page, character) {
   // 构建故事内容对应的描述
   const storyContent = page.content ? `, showing exactly this scene: ${page.content}` : '';
   
+  // 获取用户选择的风格，如果没有则使用默认风格
+  let artStyle = 'watercolor illustration style, soft colors, gentle brushstrokes, artistic, painted texture';
+  if (character.artStyle && character.artStyle.trim()) {
+    artStyle = character.artStyle;
+    console.log('🎨 OpenAI LiblibAI 使用用户选择的风格:', artStyle);
+  } else {
+    console.log('🎨 OpenAI LiblibAI 使用默认水彩风格:', artStyle);
+  }
+  
   // LiblibAI适用的完整提示词格式，强调一致性和准确性
-  const prompt = `Children's book illustration, ${consistencyNote}, ${sceneDescription}${storyContent}, cute cartoon style, simple 2D art, bright colors, child-friendly, educational, wholesome, appropriate for children aged 3-7, clean background, storybook style, character must look exactly the same in every image, precise scene matching, autism-friendly design`;
+  const prompt = `Children's book illustration, ${consistencyNote}, ${sceneDescription}${storyContent}, ${artStyle}, child-friendly, educational, wholesome, appropriate for children aged 3-7, clean background, storybook style, character must look exactly the same in every image, precise scene matching, autism-friendly design`;
   
   console.log(`第${page.pageNumber}页LiblibAI提示词:`, prompt);
   return prompt;

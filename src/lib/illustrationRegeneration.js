@@ -955,11 +955,20 @@ function buildIllustrationPrompt(pageData, characterData, useMinimalCharacterDes
     }
   }
   
+  // 获取用户选择的风格，如果没有则使用默认水彩风格
+  let artStyle = 'watercolor illustration style, soft colors, gentle brushstrokes, artistic, painted texture';
+  if (characterData.artStyle && characterData.artStyle.trim()) {
+    artStyle = characterData.artStyle;
+    console.log('🎨 使用用户选择的风格:', artStyle);
+  } else {
+    console.log('🎨 使用默认水彩风格:', artStyle);
+  }
+  
   console.log('最终场景描述:', sceneDescription);
   console.log('角色描述模式:', useMinimalCharacterDescription ? '简化模式' : '完整模式');
   
   // 确保提示词完全是英文，避免图片中出现文字，强化无文字指令
-  return `Children's book illustration, ${characterDescription} ${sceneDescription}, watercolor illustration style, soft colors, gentle brushstrokes, artistic, painted texture, child-friendly, educational, wholesome, appropriate for children aged 3-7, white background, NO TEXT, NO WORDS, NO LETTERS, NO CHINESE CHARACTERS, NO WRITING, illustration only, pure visual storytelling, text-free artwork`;
+  return `Children's book illustration, ${characterDescription} ${sceneDescription}, ${artStyle}, child-friendly, educational, wholesome, appropriate for children aged 3-7, white background, NO TEXT, NO WORDS, NO LETTERS, NO CHINESE CHARACTERS, NO WRITING, illustration only, pure visual storytelling, text-free artwork`;
 }
 
 /**

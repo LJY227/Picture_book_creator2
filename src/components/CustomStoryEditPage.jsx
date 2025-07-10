@@ -240,10 +240,19 @@ ${basePrompt}
         }
       }
       
-      // 添加通用的英文绘本风格关键词
-      const finalPrompt = `${englishPrompt}, children's book illustration style, bright and warm colors, simple and clear composition, suitable for children, appropriate for children, wholesome, innocent, educational`
+      // 获取用户选择的风格，如果没有则使用默认风格
+      let artStyle = 'watercolor illustration style, soft colors, gentle brushstrokes, artistic, painted texture';
+      if (characterData.artStyle && characterData.artStyle.trim()) {
+        artStyle = characterData.artStyle;
+        console.log('🎨 使用用户选择的风格:', artStyle);
+      } else {
+        console.log('🎨 使用默认水彩风格:', artStyle);
+      }
       
-      console.log('🎨 最终英文提示词（含角色名称）:', finalPrompt)
+      // 添加风格和通用绘本关键词
+      const finalPrompt = `${englishPrompt}, ${artStyle}, children's book illustration style, bright and warm colors, simple and clear composition, suitable for children, appropriate for children, wholesome, innocent, educational`
+      
+      console.log('🎨 最终英文提示词（含角色名称和风格）:', finalPrompt)
 
       let imageResult = null
 

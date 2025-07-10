@@ -32,9 +32,9 @@ const ACTION_CLARITY_KEYWORDS = [
 ].join(" ");
 
 /**
- * 艺术风格参考
+ * 默认艺术风格参考
  */
-const ART_STYLE_REFERENCE = "watercolor illustration style, soft colors, gentle brushstrokes, artistic, painted texture";
+const DEFAULT_ART_STYLE_REFERENCE = "watercolor illustration style, soft colors, gentle brushstrokes, artistic, painted texture";
 
 /**
  * 标准化角色描述模板
@@ -163,9 +163,10 @@ export function generateCharacterDescription(character) {
  * @param {string} params.emotion - 情绪状态
  * @param {string} params.action - 动作
  * @param {string} params.environment - 环境
+ * @param {string} params.artStyle - 艺术风格（可选，如果未提供则从角色信息中获取）
  * @returns {string} 完整的DALL-E 3提示词
  */
-export function generateAutismFriendlyPrompt({ character, sceneDescription, emotion = 'calm', action = 'standing', environment = 'home' }) {
+export function generateAutismFriendlyPrompt({ character, sceneDescription, emotion = 'calm', action = 'standing', environment = 'home', artStyle = null }) {
   // 获取角色描述
   const characterDesc = generateCharacterDescription(character);
   
@@ -178,6 +179,16 @@ export function generateAutismFriendlyPrompt({ character, sceneDescription, emot
   // 获取环境描述
   const environmentDesc = SCENE_ENVIRONMENTS[environment] || SCENE_ENVIRONMENTS.home;
   
+  // 获取用户选择的风格，优先级：参数 > 角色定义 > 默认水彩风格
+  let finalArtStyle = artStyle;
+  if (!finalArtStyle && character.artStyle && character.artStyle.trim()) {
+    finalArtStyle = character.artStyle;
+    console.log('🎨 自闭症友好提示词使用角色定义中的风格:', finalArtStyle);
+  } else if (!finalArtStyle) {
+    finalArtStyle = DEFAULT_ART_STYLE_REFERENCE;
+    console.log('🎨 自闭症友好提示词使用默认水彩风格:', finalArtStyle);
+  }
+  
   // 构建完整提示词
   const promptParts = [
     BASE_VISUAL_STYLE,
@@ -187,7 +198,7 @@ export function generateAutismFriendlyPrompt({ character, sceneDescription, emot
     environmentDesc,
     BACKGROUND_KEYWORDS,
     ACTION_CLARITY_KEYWORDS,
-    ART_STYLE_REFERENCE,
+    finalArtStyle,
     "Consistent style with previous pages."
   ];
   
